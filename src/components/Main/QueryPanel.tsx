@@ -2,18 +2,9 @@ import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
 import { ChevronDown, Search } from 'lucide-react';
 import { clsx } from 'clsx';
+import { ResponseData } from '@/lib/types';
 
-interface Citation {
-    id: string;
-    sourceId: string;
-    text: string;
-}
 
-interface ResponseData {
-    id: string;
-    text: string;
-    citations: Citation[];
-}
 
 interface QueryPanelProps {
     query: string;
@@ -25,69 +16,16 @@ interface QueryPanelProps {
 
 export default function QueryPanel({ query, response, isLoading, onQuery, onCitationClick }: QueryPanelProps) {
     const [text, setText] = useState(query);
-    const [localResponse, setLocalResponse] = useState<ResponseData | null>(null);
-    const [isLocalLoading, setIsLocalLoading] = useState(false);
 
     // Sync local state when prop changes (restoring history)
     useEffect(() => {
         setText(query);
-        // If query changes from props (history), reset local response to allow prop response to show
-        if (query !== text) {
-            setLocalResponse(null);
-        }
     }, [query]);
 
-    const handleSend = async () => {
+    const handleSend = () => {
         if (!text.trim()) return;
-
-        setIsLocalLoading(true);
-        try {
-            const res = await fetch('/api/ask', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    question: text,
-                    normaId: 1,
-                    k: 8
-                }),
-            });
-
-            if (!res.ok) throw new Error('API request failed');
-
-            const json = await res.json();
-
-            // Transform API data to ResponseData structure
-            // Assuming json.data is an array of fragments
-            if (json.ok && Array.isArray(json.data)) {
-                const combinedText = json.data.map((item: any) => item.content).join('\n\n');
-                const citations = json.data.map((item: any, index: number) => ({
-                    id: item.id || `cit-${index}`,
-                    sourceId: item.source_id ? String(item.source_id) : 'unknown',
-                    text: `Fragmento ${index + 1}` // Fallback as we don't know exact title structure
-                }));
-
-                setLocalResponse({
-                    id: 'api-response',
-                    text: combinedText,
-                    citations: citations
-                });
-
-                // Optionally notify parent that a query happened (though we handle response locally)
-                // onQuery(text); 
-            }
-
-        } catch (error) {
-            console.error("Error fetching answer:", error);
-            setLocalResponse({
-                id: 'error',
-                text: "Error al consultar la normativa. Por favor intente nuevamente.",
-                citations: []
-            });
-        } finally {
-            setIsLocalLoading(false);
-        }
+        console.log("SEND", text);
+        onQuery(text.trim());
     };
 
 
@@ -133,7 +71,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                                 disabled={isLoading}
                             >
                                 <Search size={16} />
-                                <span>{isLoading ? '...' : 'Consultar'}</span>
+                                <span>{isLoading ? 'CONSULTANDO v2...' : 'CONSULTAR v2'}</span>
                             </button>
                         </div>
                     </div>
