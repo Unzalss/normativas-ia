@@ -64,19 +64,32 @@ export async function POST(req: Request) {
 
         // 1. Relevance Gate: Keyword Match
         const q = question.toLowerCase();
-        // Check if the first word of the question appears in any fragment
-        // We use split(" ")[0] as requested, which is a heuristic.
-        const firstWord = q.split(" ")[0];
-        const hasKeywordMatch = validData.some((item: any) =>
-            (item.content || item.texto || "").toLowerCase().includes(firstWord)
-        );
 
-        if (!hasKeywordMatch) {
-            return NextResponse.json({
-                ok: true,
-                data: [],
-                message: "La pregunta no corresponde a la normativa cargada."
-            });
+        // Advanced Tokenization
+        const stopwords = new Set(["el", "la", "los", "las", "de", "del", "y", "o", "a", "en", "un", "una", "que", "qué", "como", "cómo", "cuál", "cual", "cuanto", "cuánto", "es", "son", "para", "por", "con", "sin", "sobre", "entre", "al", "se", "si", "su", "sus", "lo"]);
+
+        const keywords = q.split(/\s+/)
+            .map((w: string) => w.replace(/[.,;?!¿¡"()]/g, '')) // clean punctuation
+            .filter((w: string) =>
+                w.length >= 4 &&             // length >= 4
+                !stopwords.has(w) &&         // not a stopword
+                isNaN(Number(w))             // not a number
+            );
+
+        // Only enforce keyword match if we successfully extracted significant keywords
+        if (keywords.length > 0) {
+            // Create a blob of all valid fragment texts to search against
+            const blob = validData.map((x: any) => (x.content || x.texto || "").toLowerCase()).join("\n");
+
+            const hasKeywordMatch = keywords.some((k: string) => blob.includes(k));
+
+            if (!hasKeywordMatch) {
+                return NextResponse.json({
+                    ok: true,
+                    data: [],
+                    message: "La pregunta no corresponde a la normativa cargada."
+                });
+            }
         }
 
         // 2. Relevance Gate: Check Score
