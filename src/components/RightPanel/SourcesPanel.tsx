@@ -3,7 +3,7 @@
 import React from 'react';
 import styles from './SourcesPanel.module.css';
 import { FileText, ChevronRight, ChevronDown } from 'lucide-react';
-import { Source } from '@/lib/mockData';
+import { Source } from '@/lib/types';
 import { clsx } from 'clsx';
 
 interface SourcesPanelProps {

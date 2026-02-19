@@ -90,8 +90,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
         }
     };
 
-    const displayResponse = localResponse || response;
-    const isBusy = isLocalLoading || isLoading;
+
 
     return (
         <div className={styles.container}>
@@ -131,21 +130,21 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                             <button
                                 className={styles.consultButton}
                                 onClick={handleSend}
-                                disabled={isBusy}
+                                disabled={isLoading}
                             >
                                 <Search size={16} />
-                                <span>{isBusy ? '...' : 'Consultar'}</span>
+                                <span>{isLoading ? '...' : 'Consultar'}</span>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {displayResponse && (
+                {response && (
                     <div className={styles.responseSection}>
                         <div className={styles.responseCard}>
                             <h2 className={styles.responseTitle}>Respuesta</h2>
                             <div className={styles.responseText}>
-                                {displayResponse.text.split('\n\n').map((paragraph, i) => (
+                                {response.text.split('\n\n').map((paragraph, i) => (
                                     <p key={i}>{paragraph}</p>
                                 ))}
                             </div>
@@ -155,7 +154,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                             <div className={styles.citationsSection}>
                                 <h3 className={styles.citationTitle}>Citas / Fragmentos</h3>
                                 <div className={styles.citationList}>
-                                    {displayResponse.citations.map((cite) => (
+                                    {response.citations.map((cite) => (
                                         <button
                                             key={cite.id}
                                             className={styles.citationChip}

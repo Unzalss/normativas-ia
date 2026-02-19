@@ -3,7 +3,7 @@
 import React from 'react';
 import styles from './HistorySidebar.module.css';
 import { Plus, MessageSquare } from 'lucide-react';
-import { HistoryItem } from '@/lib/mockData';
+import { HistoryItem } from '@/lib/types';
 import { clsx } from 'clsx';
 
 interface HistorySidebarProps {
