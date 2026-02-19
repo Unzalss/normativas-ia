@@ -94,8 +94,35 @@ export async function POST(req: Request) {
             });
         }
 
-        // Return up to k items
-        return NextResponse.json({ ok: true, data: validData.slice(0, k) });
+        // 3. RAG Generation
+        let answer = "";
+        try {
+            const context = validData.slice(0, 6).map((x: any, i: number) => `[${i + 1}] ${x.seccion || 'Fragmento'}: ${x.texto || x.content}`).join("\n\n");
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo." },
+                    { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` }
+                ],
+                max_tokens: 300, // Limit to ~1200 chars roughly
+                temperature: 0,
+            });
+
+            answer = completion.choices[0].message.content || "";
+        } catch (openaiError) {
+            console.error("OpenAI RAG error:", openaiError);
+            // Fallback: first fragment trimmed
+            const first = validData[0];
+            answer = (first.content || first.texto || "").substring(0, 500) + "...";
+        }
+
+        // Return answer and data
+        return NextResponse.json({
+            ok: true,
+            answer: answer,
+            data: validData.slice(0, k)
+        });
 
     } catch (err: any) {
         return NextResponse.json(
