@@ -62,6 +62,38 @@ export async function POST(req: Request) {
             }
         }
 
+        // 1. Relevance Gate: Keyword Match
+        const q = question.toLowerCase();
+        // Check if the first word of the question appears in any fragment
+        // We use split(" ")[0] as requested, which is a heuristic.
+        const firstWord = q.split(" ")[0];
+        const hasKeywordMatch = validData.some((item: any) =>
+            (item.content || item.texto || "").toLowerCase().includes(firstWord)
+        );
+
+        if (!hasKeywordMatch) {
+            return NextResponse.json({
+                ok: true,
+                data: [],
+                message: "La pregunta no corresponde a la normativa cargada."
+            });
+        }
+
+        // 2. Relevance Gate: Check Score
+        // Get max score from valid items
+        const bestScore = validData.reduce((max: number, item: any) => {
+            const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
+            return score > max ? score : max;
+        }, 0);
+
+        if (bestScore < 0.60) {
+            return NextResponse.json({
+                ok: true,
+                data: [],
+                message: "La pregunta no corresponde a la normativa cargada."
+            });
+        }
+
         // Return up to k items
         return NextResponse.json({ ok: true, data: validData.slice(0, k) });
 
