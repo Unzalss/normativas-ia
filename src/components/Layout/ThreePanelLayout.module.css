@@ -1,0 +1,189 @@
+.container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background-color: var(--bg-app);
+}
+
+.leftPanel {
+    width: 280px;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-strong);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    transition: transform 0.3s ease;
+    z-index: 20;
+}
+
+.contentArea {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.desktopLayout {
+    display: flex;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+}
+
+.mainPanel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-strong);
+    overflow-y: auto;
+    position: relative;
+    background-color: white;
+    /* Ensure main panel is white for contrast with right panel */
+}
+
+.rightPanel {
+    width: 400px;
+    background-color: var(--bg-panel-right);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+/* Mobile Header */
+.mobileHeader {
+    display: none;
+    height: var(--header-height);
+    align-items: center;
+    padding: 0 1rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    justify-content: space-between;
+}
+
+.mobileTitle {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.menuButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    color: var(--text-primary);
+}
+
+.mobileLayout {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mobileTabBar {
+    display: none;
+    height: 60px;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-color);
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.tabButton {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    height: 100%;
+}
+
+.activeTab {
+    color: var(--accent-text);
+    font-weight: 500;
+}
+
+.overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 10;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+
+    /* Tablet adjustments if needed, maybe smaller fonts */
+    .leftPanel {
+        width: 240px;
+    }
+
+    .rightPanel {
+        width: 320px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+
+    .desktopLayout {
+        display: none;
+    }
+
+    .mobileLayout {
+        display: flex;
+    }
+
+    .mobileHeader {
+        display: flex;
+    }
+
+    .mobileTabBar {
+        display: flex;
+    }
+
+    .leftPanel {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        transform: translateX(-100%);
+    }
+
+    .leftPanelOpen {
+        transform: translateX(0);
+    }
+
+    .overlay {
+        display: block;
+    }
+
+    .contentArea {
+        height: calc(100vh - var(--header-height));
+    }
+
+    .mobileContent {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .hidden {
+        display: none !important;
+    }
+}

@@ -1,0 +1,128 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: white;
+}
+
+.title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    background-color: var(--bg-panel-right);
+}
+
+.sourceList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.sourceCard {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    cursor: pointer;
+}
+
+.sourceCard:hover {
+    border-color: #D1D5DB;
+    box-shadow: var(--shadow-sm);
+}
+
+.activeSource {
+    border-color: var(--accent-text);
+    /* Highlight active */
+    box-shadow: 0 0 0 1px var(--accent-text);
+    cursor: default;
+}
+
+.cardHeader {
+    padding: 1rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.iconWrapper {
+    padding: 0.5rem;
+    background-color: #F3F4F6;
+    border-radius: 6px;
+    color: #4B5563;
+}
+
+.sourceInfo {
+    flex: 1;
+}
+
+.sourceTitle {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+}
+
+.sourceMeta {
+    display: flex;
+    align-items: center;
+}
+
+.chevronWrapper {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    padding-left: 0.5rem;
+}
+
+.score {
+    font-size: 0.75rem;
+    color: #10B981;
+    /* Green for high score */
+    background: #ECFDF5;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.sourceDetail {
+    background-color: #F9FAFB;
+    border-top: 1px solid var(--border-color);
+    padding: 1rem;
+    font-size: 0.875rem;
+    color: #374151;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .content {
+        padding: 1rem;
+    }
+}
