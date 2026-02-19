@@ -71,7 +71,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                                 disabled={isLoading}
                             >
                                 <Search size={16} />
-                                <span>{isLoading ? 'CONSULTANDO v2...' : 'CONSULTAR v2'}</span>
+                                <span>{isLoading ? 'Consultando...' : 'Consultar'}</span>
                             </button>
                         </div>
                     </div>
