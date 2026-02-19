@@ -63,14 +63,21 @@ export default function Home() {
             const json = await res.json();
 
             if (json.ok && Array.isArray(json.data)) {
-                // consolidate fragments into text
-                const combinedText = json.data.map((item: any) => item.content).join('\n\n');
 
-                // create citations
+                // Filter valid items if needed, but API usually handles filters. 
+                // We'll map assuming API returns filtered data.
+
+                // Consolidate fragments into text
+                const combinedText = json.data
+                    .map((x: any) => x.texto ?? "")
+                    .filter((x: any) => typeof x === "string" && x.trim().length > 0)
+                    .join("\n\n");
+
+                // Create citations
                 const citations = json.data.map((item: any, index: number) => ({
                     id: item.id ? String(item.id) : `cit-${index}`,
-                    sourceId: item.source_id ? String(item.source_id) : 'unknown',
-                    text: `Fragmento ${index + 1}`
+                    sourceId: item.id ? String(item.id) : `src-${index}`, // Use fragment ID as source ID since we link to fragment
+                    text: item.seccion || `Fragmento ${index + 1}`
                 }));
 
                 const newResponse: ResponseData = {
@@ -80,16 +87,14 @@ export default function Home() {
                 };
 
                 // Extract unique sources for the right panel
-                // This logic might need refinement depending on what "source" means in the API vs UI
-                // For now, we treat each fragment as a "source" entry or group by document?
-                // The API returns fragments. Let's map fragments to Sources.
-                // Assuming `item` has title? If not, we use generic title.
+                // Map fragments to Sources
                 const newSources: Source[] = json.data.map((item: any, index: number) => ({
-                    id: item.source_id ? String(item.source_id) : `src-${index}`,
-                    title: item.metadata?.filename || `Documento ${index + 1}`, // Fallback title
-                    type: 'PDF', // Default type
-                    score: item.similarity || 0,
-                    content: item.content
+                    id: item.id ? String(item.id) : `src-${index}`,
+                    title: item.seccion ? `${item.tipo || 'Norma'} · ${item.seccion}` : `Documento ${index + 1}`,
+                    type: 'PDF', // Default or derive from item.tipo? MockData has 'PDF', 'DOC', 'WEB'. 
+                    // item.score is expected from API
+                    score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
+                    content: item.texto || item.content || ""
                 }));
 
                 setResponse(newResponse);
