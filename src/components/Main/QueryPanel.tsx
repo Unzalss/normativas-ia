@@ -1,11 +1,19 @@
-"use client";
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
 import { ChevronDown, Search } from 'lucide-react';
-import { ResponseData } from '@/lib/mockData';
 import { clsx } from 'clsx';
-import { useEffect, useState } from 'react';
+
+interface Citation {
+    id: string;
+    sourceId: string;
+    text: string;
+}
+
+interface ResponseData {
+    id: string;
+    text: string;
+    citations: Citation[];
+}
 
 interface QueryPanelProps {
     query: string;
@@ -17,16 +25,74 @@ interface QueryPanelProps {
 
 export default function QueryPanel({ query, response, isLoading, onQuery, onCitationClick }: QueryPanelProps) {
     const [text, setText] = useState(query);
+    const [localResponse, setLocalResponse] = useState<ResponseData | null>(null);
+    const [isLocalLoading, setIsLocalLoading] = useState(false);
 
     // Sync local state when prop changes (restoring history)
     useEffect(() => {
         setText(query);
+        // If query changes from props (history), reset local response to allow prop response to show
+        if (query !== text) {
+            setLocalResponse(null);
+        }
     }, [query]);
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!text.trim()) return;
-        onQuery(text);
+
+        setIsLocalLoading(true);
+        try {
+            const res = await fetch('/api/ask', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    question: text,
+                    normaId: 1,
+                    k: 8
+                }),
+            });
+
+            if (!res.ok) throw new Error('API request failed');
+
+            const json = await res.json();
+
+            // Transform API data to ResponseData structure
+            // Assuming json.data is an array of fragments
+            if (json.ok && Array.isArray(json.data)) {
+                const combinedText = json.data.map((item: any) => item.content).join('\n\n');
+                const citations = json.data.map((item: any, index: number) => ({
+                    id: item.id || `cit-${index}`,
+                    sourceId: item.source_id ? String(item.source_id) : 'unknown',
+                    text: `Fragmento ${index + 1}` // Fallback as we don't know exact title structure
+                }));
+
+                setLocalResponse({
+                    id: 'api-response',
+                    text: combinedText,
+                    citations: citations
+                });
+
+                // Optionally notify parent that a query happened (though we handle response locally)
+                // onQuery(text); 
+            }
+
+        } catch (error) {
+            console.error("Error fetching answer:", error);
+            setLocalResponse({
+                id: 'error',
+                text: "Error al consultar la normativa. Por favor intente nuevamente.",
+                citations: []
+            });
+        } finally {
+            setIsLocalLoading(false);
+        }
     };
+
+    const displayResponse = localResponse || response;
+    const isBusy = isLocalLoading || isLoading;
+
     return (
         <div className={styles.container}>
             <div className={styles.topBar}>
@@ -65,20 +131,21 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                             <button
                                 className={styles.consultButton}
                                 onClick={handleSend}
+                                disabled={isBusy}
                             >
                                 <Search size={16} />
-                                <span>Consultar</span>
+                                <span>{isBusy ? '...' : 'Consultar'}</span>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {response && (
+                {displayResponse && (
                     <div className={styles.responseSection}>
                         <div className={styles.responseCard}>
                             <h2 className={styles.responseTitle}>Respuesta</h2>
                             <div className={styles.responseText}>
-                                {response.text.split('\n\n').map((paragraph, i) => (
+                                {displayResponse.text.split('\n\n').map((paragraph, i) => (
                                     <p key={i}>{paragraph}</p>
                                 ))}
                             </div>
@@ -86,9 +153,9 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                             <div className={styles.separator} />
 
                             <div className={styles.citationsSection}>
-                                <h3 className={styles.citationTitle}>Citas</h3>
+                                <h3 className={styles.citationTitle}>Citas / Fragmentos</h3>
                                 <div className={styles.citationList}>
-                                    {response.citations.map((cite) => (
+                                    {displayResponse.citations.map((cite) => (
                                         <button
                                             key={cite.id}
                                             className={styles.citationChip}
