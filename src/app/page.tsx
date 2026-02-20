@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ThreePanelLayout from '@/components/Layout/ThreePanelLayout';
 import HistorySidebar from '@/components/Sidebar/HistorySidebar';
 import QueryPanel from '@/components/Main/QueryPanel';
@@ -17,6 +17,23 @@ export default function Home() {
     const [response, setResponse] = useState<ResponseData | undefined>(undefined);
     const [sources, setSources] = useState<Source[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [normas, setNormas] = useState<{ id: number, titulo: string }[]>([]);
+    const [selectedNormaId, setSelectedNormaId] = useState<number | null>(null);
+
+    useEffect(() => {
+        async function fetchNormas() {
+            try {
+                const res = await fetch('/api/normas');
+                const json = await res.json();
+                if (json.ok && json.data) {
+                    setNormas(json.data);
+                }
+            } catch (error) {
+                console.error("Error fetching normas:", error);
+            }
+        }
+        fetchNormas();
+    }, []);
 
     // Load full state from history
     const handleSelectHistory = (id: string) => {
@@ -36,6 +53,7 @@ export default function Home() {
         setResponse(undefined);
         setSources([]);
         setSelectedSourceId(null);
+        setSelectedNormaId(null);
     };
 
     const handleQuery = async (text: string) => {
@@ -53,7 +71,7 @@ export default function Home() {
                 },
                 body: JSON.stringify({
                     question: text,
-                    normaId: 1, // Hardcoded for now per instructions
+                    normaId: selectedNormaId,
                     k: 8
                 }),
             });
@@ -168,6 +186,9 @@ export default function Home() {
                     isLoading={isLoading}
                     onQuery={handleQuery}
                     onCitationClick={handleCitationClick}
+                    normas={normas}
+                    selectedNormaId={selectedNormaId}
+                    onSelectNormaId={setSelectedNormaId}
                 />
             }
             rightPanel={

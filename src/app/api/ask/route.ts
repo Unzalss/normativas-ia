@@ -13,6 +13,10 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
         }
 
+        if (!normaId) {
+            return NextResponse.json({ ok: true, data: [], message: "Selecciona una norma." });
+        }
+
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         const embeddingRes = await openai.embeddings.create({

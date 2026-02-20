@@ -12,9 +12,12 @@ interface QueryPanelProps {
     isLoading: boolean;
     onQuery: (text: string) => void;
     onCitationClick: (sourceId: string) => void;
+    normas: Array<{ id: number, titulo: string }>;
+    selectedNormaId: number | null;
+    onSelectNormaId: (id: number | null) => void;
 }
 
-export default function QueryPanel({ query, response, isLoading, onQuery, onCitationClick }: QueryPanelProps) {
+export default function QueryPanel({ query, response, isLoading, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId }: QueryPanelProps) {
     const [text, setText] = useState(query);
 
     // Sync local state when prop changes (restoring history)
@@ -33,10 +36,28 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
     return (
         <div className={styles.container}>
             <div className={styles.topBar}>
-                <button className={styles.dropdownBtn}>
-                    Todas las normas
-                    <ChevronDown size={16} />
-                </button>
+                <div className={styles.dropdownWrapper}>
+                    <select
+                        className={styles.dropdownSelect}
+                        value={selectedNormaId === null ? "" : selectedNormaId}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                                onSelectNormaId(null);
+                            } else {
+                                onSelectNormaId(Number(val));
+                            }
+                        }}
+                    >
+                        <option value="">Selecciona norma...</option>
+                        {normas.map(norma => (
+                            <option key={norma.id} value={norma.id}>
+                                {norma.titulo}
+                            </option>
+                        ))}
+                    </select>
+                    <ChevronDown size={16} className={styles.dropdownIcon} />
+                </div>
 
                 <div className={styles.userProfile}>
                     <span className={styles.userName}>Felix Perez</span>

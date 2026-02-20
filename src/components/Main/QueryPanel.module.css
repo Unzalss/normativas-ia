@@ -60,11 +60,16 @@
     color: var(--text-secondary);
 }
 
-.dropdownBtn {
+.dropdownWrapper {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.75rem;
+}
+
+.dropdownSelect {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0.4rem 2.25rem 0.4rem 0.75rem;
     border: 1px solid var(--border-color);
     background: white;
     border-radius: 6px;
@@ -73,11 +78,28 @@
     color: var(--text-primary);
     cursor: pointer;
     transition: all 0.2s;
+    font-family: inherit;
+    max-width: 350px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.dropdownBtn:hover {
+.dropdownSelect:hover {
     background-color: var(--bg-app);
     border-color: #D1D5DB;
+}
+
+.dropdownSelect:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.dropdownIcon {
+    position: absolute;
+    right: 0.75rem;
+    pointer-events: none;
+    color: var(--text-primary);
 }
 
 .scrollContent {
