@@ -84,7 +84,8 @@ export default function Home() {
                         })
                         .filter((text: string) => text.length > 0);
 
-                    const combinedText = cleanedFragments.slice(0, 1).join("\n\n");
+                    // Use the RAG answer from the backend if available, fallback to first cleaned fragment
+                    const combinedText = json.answer ? json.answer : cleanedFragments.slice(0, 1).join("\n\n");
 
                     // Create citations
                     const citations = json.data.map((item: any, index: number) => ({
