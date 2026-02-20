@@ -13,9 +13,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
         }
 
-        if (!normaId) {
-            return NextResponse.json({ ok: true, data: [], message: "Selecciona una norma." });
-        }
+        // No manual validation for normaId required; null means all norms
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

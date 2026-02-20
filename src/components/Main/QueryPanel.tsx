@@ -49,7 +49,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                             }
                         }}
                     >
-                        <option value="">Selecciona norma...</option>
+                        <option value="">Todas las normas</option>
                         {normas.map(norma => (
                             <option key={norma.id} value={norma.id}>
                                 {norma.titulo}
