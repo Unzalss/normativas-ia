@@ -53,6 +53,9 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                 </div>
                                 <div className={styles.sourceInfo}>
                                     <div className={styles.sourceTitle}>{source.title}</div>
+                                    {source.subtitle && (
+                                        <div className={styles.sourceSubtitle}>{source.subtitle}</div>
+                                    )}
                                     <div className={styles.sourceMeta}>
                                         <span className={styles.score}>{(source.score * 100).toFixed(0)}% relevant</span>
                                     </div>

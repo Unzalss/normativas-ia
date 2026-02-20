@@ -27,6 +27,7 @@ export interface NormaParteMetadata {
 export interface Source {
     id: string;
     title: string;
+    subtitle?: string;
     type: 'PDF' | 'DOC' | 'WEB';
     score: number;
     content: string;

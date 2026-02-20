@@ -76,6 +76,13 @@
     margin-bottom: 0.25rem;
 }
 
+.sourceSubtitle {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+}
+
 .sourceMeta {
     display: flex;
     align-items: center;

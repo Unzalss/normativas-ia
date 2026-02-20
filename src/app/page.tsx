@@ -119,13 +119,40 @@ export default function Home() {
                     };
 
                     // Extract unique sources for the right panel
-                    newSources = json.data.map((item: any, index: number) => ({
-                        id: item.id ? String(item.id) : `src-${index}`,
-                        title: item.seccion ? `${item.tipo || 'Norma'} · ${item.seccion}` : `Documento ${index + 1}`,
-                        type: 'PDF',
-                        score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
-                        content: item.texto || item.content || ""
-                    }));
+                    newSources = json.data.map((item: any, index: number) => {
+                        // 1) Title logic: norma.titulo -> codigo -> "Documento X"
+                        let sourceTitle = `Documento ${index + 1}`;
+                        if (item.norma_titulo && item.codigo) {
+                            sourceTitle = `${item.codigo} — ${item.norma_titulo}`;
+                        } else if (item.norma_titulo) {
+                            sourceTitle = item.norma_titulo;
+                        } else if (item.codigo) {
+                            sourceTitle = item.codigo;
+                        } else if (item.normas && item.normas.titulo) {
+                            sourceTitle = item.normas.titulo;
+                        }
+
+                        // 2) Subtitle logic (Artículo or Sección)
+                        let sourceSubtitle = "";
+                        if (item.articulo) {
+                            sourceSubtitle = item.articulo;
+                        } else if (item.seccion) {
+                            sourceSubtitle = item.seccion;
+                        } else if (item.tipo && item.numero) {
+                            sourceSubtitle = `${item.tipo} ${item.numero}`;
+                        } else {
+                            sourceSubtitle = "Fragmento";
+                        }
+
+                        return {
+                            id: item.id ? String(item.id) : `src-${index}`,
+                            title: sourceTitle,
+                            subtitle: sourceSubtitle, // We will add this to the type or just render it if present in the component
+                            type: 'PDF',
+                            score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
+                            content: item.texto || item.content || ""
+                        };
+                    });
 
                     previewText = combinedText;
 
