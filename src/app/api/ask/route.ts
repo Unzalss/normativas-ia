@@ -62,18 +62,18 @@ export async function POST(req: Request) {
             }
         }
 
-        // 1. Relevance Gate: Check Score (Threshold increased to 0.70)
+        // 1. Relevance Gate: Check Score (Threshold 0.45)
         // Get max score from valid items
         const bestScore = validData.reduce((max: number, item: any) => {
             const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
             return score > max ? score : max;
         }, 0);
 
-        if (bestScore < 0.70) {
+        if (!validData.length || bestScore < 0.45) {
             return NextResponse.json({
                 ok: true,
                 data: [],
-                message: "La pregunta no corresponde a la normativa cargada."
+                message: "No aparece en la normativa cargada."
             });
         }
 
