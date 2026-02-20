@@ -13,7 +13,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
         }
 
-        // No manual validation for normaId required; null means all norms
+        // Parse normaId explicitly to ensure global searches
+        let parsedNormaId: number | null = null;
+        if (normaId !== null && normaId !== undefined && normaId !== "" && String(normaId) !== "all") {
+            const num = Number(normaId);
+            if (!isNaN(num)) parsedNormaId = num;
+        }
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -40,7 +45,7 @@ export async function POST(req: Request) {
         // First attempt with requested k
         let { data: rawData, error } = await supabase.rpc("buscar_norma_partes", {
             q_embedding,
-            q_norma_id: normaId,
+            q_norma_id: parsedNormaId,
             k,
         });
 
@@ -55,7 +60,7 @@ export async function POST(req: Request) {
 
             const { data: retryData, error: retryError } = await supabase.rpc("buscar_norma_partes", {
                 q_embedding,
-                q_norma_id: normaId,
+                q_norma_id: parsedNormaId,
                 k: kRetry,
             });
 
