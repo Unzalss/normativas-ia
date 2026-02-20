@@ -69,10 +69,22 @@ export default function Home() {
 
                 if (Array.isArray(json.data) && json.data.length > 0) {
                     // Consolidate fragments into text
-                    const combinedText = json.data
+                    const cleanedFragments = json.data
                         .map((x: any) => x.texto ?? "")
                         .filter((x: any) => typeof x === "string" && x.trim().length > 0)
-                        .join("\n\n");
+                        .map((text: string) => {
+                            const lines = text.split('\n');
+                            const filteredLines = lines.filter(line =>
+                                !line.includes('BOLETÍN OFICIAL DEL ESTADO') &&
+                                !line.includes('LEGISLACIÓN CONSOLIDADA')
+                            );
+                            let cleanedText = filteredLines.join('\n');
+                            cleanedText = cleanedText.replace(/Página\s+\d+/gi, '');
+                            return cleanedText.trim();
+                        })
+                        .filter((text: string) => text.length > 0);
+
+                    const combinedText = cleanedFragments.slice(0, 2).join("\n\n");
 
                     // Create citations
                     const citations = json.data.map((item: any, index: number) => ({

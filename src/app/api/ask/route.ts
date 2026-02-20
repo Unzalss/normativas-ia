@@ -62,44 +62,14 @@ export async function POST(req: Request) {
             }
         }
 
-        // 1. Relevance Gate: Keyword Match
-        const q = question.toLowerCase();
-
-        // Advanced Tokenization
-        const stopwords = new Set(["el", "la", "los", "las", "de", "del", "y", "o", "a", "en", "un", "una", "que", "qué", "como", "cómo", "cuál", "cual", "cuanto", "cuánto", "es", "son", "para", "por", "con", "sin", "sobre", "entre", "al", "se", "si", "su", "sus", "lo"]);
-
-        const keywords = q.split(/\s+/)
-            .map((w: string) => w.replace(/[.,;?!¿¡"()]/g, '')) // clean punctuation
-            .filter((w: string) =>
-                w.length >= 4 &&             // length >= 4
-                !stopwords.has(w) &&         // not a stopword
-                isNaN(Number(w))             // not a number
-            );
-
-        // Only enforce keyword match if we successfully extracted significant keywords
-        if (keywords.length > 0) {
-            // Create a blob of all valid fragment texts to search against
-            const blob = validData.map((x: any) => (x.content || x.texto || "").toLowerCase()).join("\n");
-
-            const hasKeywordMatch = keywords.some((k: string) => blob.includes(k));
-
-            if (!hasKeywordMatch) {
-                return NextResponse.json({
-                    ok: true,
-                    data: [],
-                    message: "La pregunta no corresponde a la normativa cargada."
-                });
-            }
-        }
-
-        // 2. Relevance Gate: Check Score
+        // 1. Relevance Gate: Check Score (Threshold increased to 0.70)
         // Get max score from valid items
         const bestScore = validData.reduce((max: number, item: any) => {
             const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
             return score > max ? score : max;
         }, 0);
 
-        if (bestScore < 0.60) {
+        if (bestScore < 0.70) {
             return NextResponse.json({
                 ok: true,
                 data: [],
