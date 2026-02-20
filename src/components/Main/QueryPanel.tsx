@@ -108,22 +108,7 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                                 ))}
                             </div>
 
-                            <div className={styles.separator} />
 
-                            <div className={styles.citationsSection}>
-                                <h3 className={styles.citationTitle}>Citas / Fragmentos</h3>
-                                <div className={styles.citationList}>
-                                    {response.citations.map((cite) => (
-                                        <button
-                                            key={cite.id}
-                                            className={styles.citationChip}
-                                            onClick={() => onCitationClick(cite.sourceId)}
-                                        >
-                                            {cite.text}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                     </div>
                 )}
