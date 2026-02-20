@@ -118,8 +118,26 @@ export default function Home() {
                         citations: citations
                     };
 
-                    // Extract unique sources for the right panel
-                    newSources = json.data.map((item: any, index: number) => {
+                    // Deduplicate unique sources for the right panel
+                    const uniqueData: any[] = [];
+                    const seenSignatures = new Set<string>();
+                    const seenIds = new Set<string>();
+
+                    for (const item of json.data) {
+                        const idStr = item.id ? String(item.id) : null;
+                        const sig = `${item.norma_id || ''}-${item.seccion || ''}-${item.tipo || ''}-${(item.texto || item.content || "").substring(0, 40)}`;
+
+                        // Avoid duplicates
+                        if (idStr && seenIds.has(idStr)) continue;
+                        if (seenSignatures.has(sig)) continue;
+
+                        if (idStr) seenIds.add(idStr);
+                        seenSignatures.add(sig);
+
+                        uniqueData.push(item);
+                    }
+
+                    newSources = uniqueData.map((item: any, index: number) => {
                         // 1) Title logic: norma.titulo -> codigo -> "Documento X"
                         let sourceTitle = `Documento ${index + 1}`;
                         if (item.norma_titulo && item.codigo) {
