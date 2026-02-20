@@ -84,7 +84,7 @@ export default function Home() {
                         })
                         .filter((text: string) => text.length > 0);
 
-                    const combinedText = cleanedFragments.slice(0, 2).join("\n\n");
+                    const combinedText = cleanedFragments.slice(0, 1).join("\n\n");
 
                     // Create citations
                     const citations = json.data.map((item: any, index: number) => ({
