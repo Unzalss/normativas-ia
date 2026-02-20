@@ -166,6 +166,7 @@ export default function Home() {
                             id: item.id ? String(item.id) : `src-${index}`,
                             title: sourceTitle,
                             subtitle: sourceSubtitle, // We will add this to the type or just render it if present in the component
+                            normaId: item.norma_id,
                             type: 'PDF',
                             score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
                             content: item.texto || item.content || ""

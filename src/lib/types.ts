@@ -28,6 +28,7 @@ export interface Source {
     id: string;
     title: string;
     subtitle?: string;
+    normaId?: number | string;
     type: 'PDF' | 'DOC' | 'WEB';
     score: number;
     content: string;
