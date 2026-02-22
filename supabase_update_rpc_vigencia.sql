@@ -1,7 +1,5 @@
--- 1. Asegurar campos de vigencia en la tabla normas (fecha_derogacion)
-ALTER TABLE normas ADD COLUMN IF NOT EXISTS fecha_derogacion date;
+-- Migración para incluir campos de título y código de norma en el RPC
 
--- 2. Modificar el RPC para aplicar el filtro de vigencia solo al buscar en global
 CREATE OR REPLACE FUNCTION public.buscar_norma_partes(
   q_embedding vector(1536),
   q_norma_id bigint DEFAULT NULL,
@@ -13,7 +11,9 @@ RETURNS TABLE (
   tipo text,
   seccion text,
   texto text,
-  score float
+  score float,
+  norma_titulo text,
+  codigo text
 )
 LANGUAGE plpgsql
 AS $$
@@ -25,7 +25,9 @@ BEGIN
     np.tipo,
     np.seccion,
     np.texto,
-    1 - (np.embedding <=> q_embedding) AS score
+    1 - (np.embedding <=> q_embedding) AS score,
+    n.titulo AS norma_titulo,
+    n.codigo AS codigo
   FROM normas_partes np
   JOIN normas n ON np.norma_id = n.id
   WHERE 
@@ -46,21 +48,3 @@ BEGIN
   LIMIT k;
 END;
 $$;
-
-/*
---- QUICK SQL TEST SNIPPET ---
-
--- 1. Test global (todas las normas): Solo debe devolver fragmentos de normas vigentes
-SELECT * FROM public.buscar_norma_partes(
-    (SELECT embedding FROM normas_partes LIMIT 1), 
-    NULL, 
-    5
-);
-
--- 2. Test norma concreta (Norma #1): Debe funcionar aunque no esté vigente
-SELECT * FROM public.buscar_norma_partes(
-    (SELECT embedding FROM normas_partes WHERE norma_id = 1 LIMIT 1), 
-    1, 
-    5
-);
-*/

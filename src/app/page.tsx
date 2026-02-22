@@ -124,6 +124,9 @@ export default function Home() {
                     const seenIds = new Set<string>();
 
                     for (const item of json.data) {
+                        const itemScore = typeof item.score === 'number' ? item.score : (item.similarity || 0);
+                        if (itemScore < 0.55) continue; // Skip low relevance noise
+
                         const idStr = item.id ? String(item.id) : null;
                         const sig = `${item.norma_id || ''}-${item.seccion || ''}-${item.tipo || ''}-${(item.texto || item.content || "").substring(0, 40)}`;
 
