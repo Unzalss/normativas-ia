@@ -47,6 +47,7 @@ export async function POST(req: Request) {
             q_embedding,
             q_norma_id: parsedNormaId,
             k,
+            q_text: question
         });
 
         if (error) throw error;
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
                 q_embedding,
                 q_norma_id: parsedNormaId,
                 k: kRetry,
+                q_text: question
             });
 
             if (!retryError && retryData) {
