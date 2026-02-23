@@ -71,18 +71,26 @@ export async function POST(req: Request) {
             }
         }
 
-        // 1. Relevance Gate: Check Score (Threshold 0.45)
-        // Get max score from valid items
-        const bestScore = validData.reduce((max: number, item: any) => {
-            const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
-            return score > max ? score : max;
-        }, 0);
+        // 1. Relevance Gate: Grounding & Threshold check
+        let bestScore = 0;
+        let strongCount = 0;
+        let mediumCount = 0;
 
-        if (!validData.length || bestScore < 0.45) {
+        for (const item of validData) {
+            const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
+            if (score > bestScore) bestScore = score;
+            if (score >= 0.70) strongCount++;
+            if (score >= 0.60) mediumCount++;
+        }
+
+        // Condición para permitir OpenAI
+        const hasEnoughEvidence = (strongCount >= 1 || mediumCount >= 2);
+
+        if (!validData.length || !hasEnoughEvidence) {
             return NextResponse.json({
                 ok: true,
-                data: [],
-                message: "No aparece en la normativa cargada."
+                data: validData.slice(0, k), // Se devuelven las fuentes (aún insuficientes) para transparencia visual
+                message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
             });
         }
 
