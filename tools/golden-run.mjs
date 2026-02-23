@@ -37,6 +37,7 @@ function getCodigo(item) {
     if (item.codigo) return item.codigo;
     if (item.norma_codigo) return item.norma_codigo;
     if (item.norma && item.norma.codigo) return item.norma.codigo;
+    if (item.normas && item.normas.codigo) return item.normas.codigo;
     return null;
 }
 
@@ -77,7 +78,7 @@ async function runGoldenTests() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    question: test.pregunta,
+                    question: test.pregunta || test.question,
                     normaId: test.norma_id || null
                 })
             });
@@ -97,6 +98,13 @@ async function runGoldenTests() {
         } catch (e) {
             console.error(`Error llamando a la API para Test #${test.id}:`, e);
             rawResponse = { error: e.message };
+        }
+
+        // Print raw shape for the first test as requested
+        if (test.id === tests[0].id || passCount + failList.length === 0) {
+            console.log(`\n--- DUMP DEL JSON REAL DE PRODUCCIÓN (Test #${test.id}) ---`);
+            console.log(JSON.stringify(rawResponse, null, 2));
+            console.log(`----------------------------------------------------------\n`);
         }
 
         // Extract metrics
@@ -139,7 +147,7 @@ async function runGoldenTests() {
             process.stdout.write('❌ ');
             failList.push({
                 id: test.id,
-                pregunta: test.pregunta,
+                pregunta: test.pregunta || test.question,
                 must_ground: test.must_ground,
                 expected: {
                     min_top_score: test.expected_min_top_score,

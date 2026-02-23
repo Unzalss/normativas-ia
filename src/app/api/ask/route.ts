@@ -20,6 +20,10 @@ export async function POST(req: Request) {
             if (!isNaN(num)) parsedNormaId = num;
         }
 
+        console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
+        console.log("SERVICE_ROLE present =", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+        console.log("OPENAI present =", !!process.env.OPENAI_API_KEY);
+
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
         const embeddingRes = await openai.embeddings.create({
