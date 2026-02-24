@@ -74,12 +74,17 @@ async function runGoldenTests() {
 
         // Call API
         try {
+            const q = test.pregunta || test.question;
+            const codigo = test.norma_codigo || null;
+
+            console.log("RUN TEST", test.id, "| normaCodigo en BD:", codigo, "| pregunta:", (q || "").slice(0, 80));
+
             const resp = await fetch(ASK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    question: test.pregunta || test.question,
-                    normaId: test.norma_id || null
+                    question: q,
+                    normaCodigo: codigo
                 })
             });
 
