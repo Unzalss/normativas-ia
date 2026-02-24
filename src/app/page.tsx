@@ -85,13 +85,10 @@ export default function Home() {
                 let newSources: Source[] = [];
                 let previewText = "";
 
-                // Use robust explicit arrays if backend provides them, otherwise fallback
-                const safeSourcesArray = Array.isArray(json.sources) && json.sources.length > 0 ? json.sources : (Array.isArray(json.data) ? json.data : []);
-
-                if (safeSourcesArray.length > 0) {
+                if (Array.isArray(json.data) && json.data.length > 0) {
                     // Consolidate fragments into text
-                    const cleanedFragments = safeSourcesArray
-                        .map((x: any) => x.texto ?? x.content ?? "")
+                    const cleanedFragments = json.data
+                        .map((x: any) => x.texto ?? "")
                         .filter((x: any) => typeof x === "string" && x.trim().length > 0)
                         .map((text: string) => {
                             const lines = text.split('\n');
@@ -108,21 +105,12 @@ export default function Home() {
                     // Use the RAG answer from the backend if available, fallback to first cleaned fragment
                     const combinedText = json.answer ? json.answer : cleanedFragments.slice(0, 1).join("\n\n");
 
-                    // Create citations: prefer backend json.citations if exact length match, otherwise map
-                    let citations;
-                    if (Array.isArray(json.citations) && json.citations.length === safeSourcesArray.length) {
-                        citations = json.citations.map((c: any, index: number) => ({
-                            id: c.id_fragmento || `cit-${index}`,
-                            sourceId: c.id_fragmento || `src-${index}`,
-                            text: c.seccion || `Fragmento ${index + 1}`
-                        }));
-                    } else {
-                        citations = safeSourcesArray.map((item: any, index: number) => ({
-                            id: item.id ? String(item.id) : `cit-${index}`,
-                            sourceId: item.id ? String(item.id) : `src-${index}`,
-                            text: item.seccion || `Fragmento ${index + 1}`
-                        }));
-                    }
+                    // Create citations
+                    const citations = json.data.map((item: any, index: number) => ({
+                        id: item.id ? String(item.id) : `cit-${index}`,
+                        sourceId: item.id ? String(item.id) : `src-${index}`,
+                        text: item.seccion || `Fragmento ${index + 1}`
+                    }));
 
                     newResponse = {
                         id: crypto.randomUUID(),
@@ -135,7 +123,7 @@ export default function Home() {
                     const seenSignatures = new Set<string>();
                     const seenIds = new Set<string>();
 
-                    for (const item of safeSourcesArray) {
+                    for (const item of json.data) {
                         const itemScore = typeof item.score === 'number' ? item.score : (item.similarity || 0);
                         if (itemScore < 0.55) continue; // Skip low relevance noise
 
