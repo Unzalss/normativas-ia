@@ -137,8 +137,8 @@ export async function POST(req: Request) {
         for (const item of validData) {
             const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
             if (score > bestScore) bestScore = score;
-            if (score >= 0.70) strongCount++;
-            if (score >= 0.60) mediumCount++;
+            if (score >= 0.65) strongCount++;
+	    if (score >= 0.50) mediumCount++;
         }
 
         debugInfo.bestScore = bestScore;
