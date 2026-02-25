@@ -14,9 +14,42 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
         }
 
+        const supabase = createClient(
+            process.env.SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+
         // Parse normaId explicitly to ensure global searches
         let parsedNormaId: number | null = null;
-        if (normaId !== null && normaId !== undefined && normaId !== "" && String(normaId) !== "all") {
+
+        if (normaCodigo) {
+            const codigoNormalizado = (normaCodigo ?? "")
+                .trim()
+                .replace(/\s+/g, " ");
+
+            const { data: normaRow, error: normaError } = await supabase
+                .from("normas")
+                .select("id")
+                .ilike("codigo", codigoNormalizado)
+                .limit(1)
+                .maybeSingle();
+
+            if (normaError) {
+                return NextResponse.json(
+                    { ok: false, error: "Error consultando tabla normas", detalle: normaError.message },
+                    { status: 500 }
+                );
+            }
+
+            if (!normaRow?.id) {
+                return NextResponse.json(
+                    { ok: false, error: "normaCodigo no encontrado en tabla normas", normaCodigo: codigoNormalizado },
+                    { status: 400 }
+                );
+            }
+
+            parsedNormaId = normaRow.id;
+        } else if (normaId !== null && normaId !== undefined && normaId !== "" && String(normaId) !== "all") {
             const num = Number(normaId);
             if (!isNaN(num)) parsedNormaId = num;
         }
@@ -38,11 +71,6 @@ export async function POST(req: Request) {
         });
 
         const q_embedding = embeddingRes.data[0].embedding;
-
-        const supabase = createClient(
-            process.env.SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        );
 
         const isValidFragment = (text: string) => {
             if (text.length < 80) return false;
