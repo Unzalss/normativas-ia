@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
     try {
+        const xDebug = req.headers.get("x-debug") === "1";
         const { question, normaId, k = 8 } = await req.json();
 
         if (!question) {
@@ -20,9 +21,15 @@ export async function POST(req: Request) {
             if (!isNaN(num)) parsedNormaId = num;
         }
 
-        console.log("SUPABASE_URL =", process.env.SUPABASE_URL);
-        console.log("SERVICE_ROLE present =", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-        console.log("OPENAI present =", !!process.env.OPENAI_API_KEY);
+        const debugInfo: any = {
+            normaIdRecibido: normaId,
+            normaIdResuelto: parsedNormaId,
+            threshold: "N/A (using order by distance limit k)",
+            limit: k,
+            filasDevueltas1: 0,
+            filasDevueltas2: 0,
+            rpcParamErrors: null
+        };
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -47,28 +54,49 @@ export async function POST(req: Request) {
         };
 
         // First attempt with requested k
-        let { data: rawData, error } = await supabase.rpc("buscar_norma_partes", {
+        // The RPC "buscar_norma_partes" accepts: q_embedding, q_norma_id, k.
+        const rpcPayload = {
             q_embedding,
             q_norma_id: parsedNormaId,
-            k,
-            q_text: question
-        });
+            k
+        };
 
-        if (error) throw error;
+        let { data: rawData, error } = await supabase.rpc("buscar_norma_partes", rpcPayload);
+
+        console.log("--- Búsqueda en Supabase 1 ---");
+        console.log(`norma_id: ${parsedNormaId}, limit(k): ${k}`);
+        if (error) {
+            console.error("Error RPC 1:", error.message, error.details);
+            debugInfo.rpcParamErrors = error;
+            return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
+        }
+
+        debugInfo.filasDevueltas1 = rawData?.length || 0;
+        console.log(`Filas devueltas 1: ${rawData?.length || 0}`);
 
         let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || ""));
 
         // If not enough valid results, try fetching more
         if (validData.length < k) {
             const kRetry = k * 3;
-            // console.log(`Not enough valid fragments (${validData.length}/${k}). Retrying with k=${kRetry}...`);
+            debugInfo.limitRetry = kRetry;
 
             const { data: retryData, error: retryError } = await supabase.rpc("buscar_norma_partes", {
                 q_embedding,
                 q_norma_id: parsedNormaId,
-                k: kRetry,
-                q_text: question
+                k: kRetry
             });
+
+            console.log("--- Búsqueda en Supabase 2 (Retry) ---");
+            console.log(`norma_id: ${parsedNormaId}, limit(kRetry): ${kRetry}`);
+            if (retryError) {
+                console.error("Error RPC 2:", retryError.message, retryError.details);
+                debugInfo.rpcParamErrorsRetry = retryError;
+                return NextResponse.json({ error: `Supabase RPC Retry Error: ${retryError.message} - ${retryError.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
+            }
+
+            debugInfo.filasDevueltas2 = retryData?.length || 0;
+            console.log(`Filas devueltas 2: ${retryData?.length || 0}`);
 
             if (!retryError && retryData) {
                 validData = retryData.filter((item: any) => isValidFragment(item.content || item.texto || ""));
@@ -87,15 +115,22 @@ export async function POST(req: Request) {
             if (score >= 0.60) mediumCount++;
         }
 
+        debugInfo.bestScore = bestScore;
+        debugInfo.strongCount = strongCount;
+        debugInfo.mediumCount = mediumCount;
+
         // Condición para permitir OpenAI
         const hasEnoughEvidence = (strongCount >= 1 || mediumCount >= 2);
+        debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
         if (!validData.length || !hasEnoughEvidence) {
-            return NextResponse.json({
+            const respPayload: any = {
                 ok: true,
                 data: validData.slice(0, k), // Se devuelven las fuentes (aún insuficientes) para transparencia visual
                 message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
-            });
+            };
+            if (xDebug) respPayload.debug = debugInfo;
+            return NextResponse.json(respPayload);
         }
 
         // 3. RAG Generation
@@ -114,19 +149,23 @@ export async function POST(req: Request) {
             });
 
             answer = completion.choices[0].message.content || "";
-        } catch (openaiError) {
+        } catch (openaiError: any) {
             console.error("OpenAI RAG error:", openaiError);
+            debugInfo.openaiError = openaiError?.message;
             // Fallback: first fragment trimmed
             const first = validData[0];
             answer = (first.content || first.texto || "").substring(0, 500) + "...";
         }
 
         // Return answer and data
-        return NextResponse.json({
+        const okPayload: any = {
             ok: true,
             answer: answer,
             data: validData.slice(0, k)
-        });
+        };
+        if (xDebug) okPayload.debug = debugInfo;
+
+        return NextResponse.json(okPayload);
 
     } catch (err: any) {
         return NextResponse.json(
