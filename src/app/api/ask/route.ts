@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
     try {
         const xDebug = req.headers.get("x-debug") === "1";
-        const { question, normaId, k = 8 } = await req.json();
+        const { question, normaId, normaCodigo = null, k = 12 } = await req.json();
 
         if (!question) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
@@ -22,12 +22,10 @@ export async function POST(req: Request) {
         }
 
         const debugInfo: any = {
-            normaIdRecibido: normaId,
+            normaCodigoRecibido: normaCodigo,
             normaIdResuelto: parsedNormaId,
-            threshold: "N/A (using order by distance limit k)",
-            limit: k,
-            filasDevueltas1: 0,
-            filasDevueltas2: 0,
+            rpcLlamado: "buscar_norma_partes",
+            rowsLength: 0,
             rpcParamErrors: null
         };
 
@@ -71,7 +69,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
         }
 
-        debugInfo.filasDevueltas1 = rawData?.length || 0;
+        debugInfo.rowsLength = rawData?.length || 0;
         console.log(`Filas devueltas 1: ${rawData?.length || 0}`);
 
         let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || ""));
