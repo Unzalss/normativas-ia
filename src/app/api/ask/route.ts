@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
+const K_GLOBAL = 12;
+const K_PER_NORMA = 6;
+const MAX_NORMAS = 50;
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -79,31 +83,77 @@ export async function POST(req: Request) {
             return true;
         };
 
-        // First attempt with requested k
-        // The RPC "buscar_norma_partes" accepts: q_embedding, q_norma_id, k.
-        const rpcPayload = {
-            q_embedding,
-            q_norma_id: parsedNormaId,
-            k
+        const getScore = (row: any) => {
+            if (typeof row.score === 'number') return row.score;
+            if (typeof row.similarity === 'number') return row.similarity;
+            if (typeof row.distance === 'number') return -row.distance;
+            return 0;
         };
 
-        let { data: rawData, error } = await supabase.rpc("buscar_norma_partes", rpcPayload);
+        const busquedaGlobal = async (qEmbedding: number[]) => {
+            const { data: normas } = await supabase.from("normas").select("id,codigo").limit(MAX_NORMAS);
+            if (!normas || normas.length === 0) return [];
+            console.log(`[GLOBAL] Buscando en ${normas.length} normas...`);
 
-        console.log("--- Búsqueda en Supabase 1 ---");
-        console.log(`norma_id: ${parsedNormaId}, limit(k): ${k}`);
-        if (error) {
-            console.error("Error RPC 1:", error.message, error.details);
-            debugInfo.rpcParamErrors = error;
-            return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
+            const promises = normas.map(norma =>
+                supabase.rpc("buscar_norma_partes", {
+                    q_embedding: qEmbedding,
+                    q_norma_id: norma.id,
+                    k: K_PER_NORMA
+                }).then(res => res.data || [])
+            );
+
+            const resultsArray = await Promise.all(promises);
+            const flatResults = resultsArray.flat();
+
+            const deduplicated = new Map();
+            for (const row of flatResults) {
+                const key = row.parte_id || row.id;
+                if (!deduplicated.has(key)) {
+                    deduplicated.set(key, row);
+                }
+            }
+
+            const sorted = Array.from(deduplicated.values()).sort((a, b) => getScore(b) - getScore(a));
+            return sorted.slice(0, K_GLOBAL);
+        };
+
+        let rawData: any[] = [];
+
+        if (parsedNormaId !== null) {
+            console.log(`[NORMA] Búsqueda en norma ${parsedNormaId}`);
+            // First attempt with requested k
+            // The RPC "buscar_norma_partes" accepts: q_embedding, q_norma_id, k.
+            const rpcPayload = {
+                q_embedding,
+                q_norma_id: parsedNormaId,
+                k
+            };
+
+            const { data, error } = await supabase.rpc("buscar_norma_partes", rpcPayload);
+
+            console.log("--- Búsqueda en Supabase 1 ---");
+            console.log(`norma_id: ${parsedNormaId}, limit(k): ${k}`);
+            if (error) {
+                console.error("Error RPC 1:", error.message, error.details);
+                debugInfo.rpcParamErrors = error;
+                return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
+            }
+
+            rawData = data || [];
+            debugInfo.rowsLength = rawData.length;
+            console.log(`Filas devueltas 1: ${rawData.length}`);
+        } else {
+            console.log(`[GLOBAL] Iniciando búsqueda global...`);
+            rawData = await busquedaGlobal(q_embedding);
+            debugInfo.rowsLength = rawData.length;
+            console.log(`Filas devueltas (Global al final): ${rawData.length}`);
         }
-
-        debugInfo.rowsLength = rawData?.length || 0;
-        console.log(`Filas devueltas 1: ${rawData?.length || 0}`);
 
         let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || ""));
 
-        // If not enough valid results, try fetching more
-        if (validData.length < k) {
+        // If not enough valid results, try fetching more (sólo para búsquedas de una norma)
+        if (validData.length < k && parsedNormaId !== null) {
             const kRetry = k * 3;
             debugInfo.limitRetry = kRetry;
 
@@ -135,10 +185,10 @@ export async function POST(req: Request) {
         let mediumCount = 0;
 
         for (const item of validData) {
-            const score = typeof item.score === 'number' ? item.score : (item.similarity || 0);
+            const score = getScore(item);
             if (score > bestScore) bestScore = score;
             if (score >= 0.65) strongCount++;
-	    if (score >= 0.50) mediumCount++;
+            if (score >= 0.50) mediumCount++;
         }
 
         debugInfo.bestScore = bestScore;
