@@ -291,40 +291,47 @@ export async function POST(req: Request) {
             return NextResponse.json(respPayload);
         }
 
+        // 2.5 Literal Mode Detection
+        const isLiteralMatch = /(qué\s+dice|texto\s+literal|transcribe|copia)\s+.*(art(?:í|i)culo|art\.)\s*\d+/i.test(question) || /(art(?:í|i)culo|art\.)\s*\d+/i.test(question);
+        if (xDebug) debugInfo.isLiteralMatch = isLiteralMatch;
+
         // 3. RAG Generation
         let answer = "";
-        try {
-            const context = validData.slice(0, 3).map((x: any, i: number) => {
-                let header = x.seccion || 'Fragmento';
-                if (x.articulo_detectado) {
-                    header += ` (articulo_detectado: ${x.articulo_detectado})`;
-                }
-                return `[${i + 1}] ${header}: ${x.texto || x.content}`;
-            }).join("\n\n");
 
-            const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo. Cuando respondas debes citar el artículo usando el formato [Artículo X] si aparece en el contexto. No inventar artículos. Si el contexto contiene un fragmento con articulo_detectado, usar esa referencia." },
-                    { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` }
-                ],
-                max_tokens: 300, // Limit to ~1200 chars roughly
-                temperature: 0,
-            });
+        if (!isLiteralMatch) {
+            try {
+                const context = validData.slice(0, 3).map((x: any, i: number) => {
+                    let header = x.seccion || 'Fragmento';
+                    if (x.articulo_detectado) {
+                        header += ` (articulo_detectado: ${x.articulo_detectado})`;
+                    }
+                    return `[${i + 1}] ${header}: ${x.texto || x.content}`;
+                }).join("\n\n");
 
-            answer = completion.choices[0].message.content || "";
-        } catch (openaiError: any) {
-            console.error("OpenAI RAG error:", openaiError);
-            debugInfo.openaiError = openaiError?.message;
+                const completion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo. Cuando respondas debes citar el artículo usando el formato [Artículo X] si aparece en el contexto. No inventar artículos. Si el contexto contiene un fragmento con articulo_detectado, usar esa referencia." },
+                        { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` }
+                    ],
+                    max_tokens: 300, // Limit to ~1200 chars roughly
+                    temperature: 0,
+                });
 
-            // Si falla OpenAI, devolvemos lo mismo que si no hubiera evidencia
-            const respPayload: any = {
-                ok: true,
-                data: [],
-                message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
-            };
-            if (xDebug) respPayload.debug = debugInfo;
-            return NextResponse.json(respPayload);
+                answer = completion.choices[0].message.content || "";
+            } catch (openaiError: any) {
+                console.error("OpenAI RAG error:", openaiError);
+                debugInfo.openaiError = openaiError?.message;
+
+                // Si falla OpenAI, devolvemos lo mismo que si no hubiera evidencia
+                const respPayload: any = {
+                    ok: true,
+                    data: [],
+                    message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
+                };
+                if (xDebug) respPayload.debug = debugInfo;
+                return NextResponse.json(respPayload);
+            }
         }
 
         // 4. Highlight Generation
@@ -340,44 +347,46 @@ export async function POST(req: Request) {
             return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
         };
 
-        try {
-            for (const item of topKData) {
-                const textBase = item.texto || item.content || "";
-                if (!textBase) continue;
+        if (!isLiteralMatch) {
+            try {
+                for (const item of topKData) {
+                    const textBase = item.texto || item.content || "";
+                    if (!textBase) continue;
 
-                // Split into sentences (by dot or newline), filter empty, max 8
-                const sentences = textBase
-                    .split(/(?:\.|\n)+/)
-                    .map((s: string) => s.trim())
-                    .filter((s: string) => s.length > 20)
-                    .slice(0, 8);
+                    // Split into sentences (by dot or newline), filter empty, max 8
+                    const sentences = textBase
+                        .split(/(?:\.|\n)+/)
+                        .map((s: string) => s.trim())
+                        .filter((s: string) => s.length > 20)
+                        .slice(0, 8);
 
-                if (sentences.length === 0) continue;
+                    if (sentences.length === 0) continue;
 
-                const embRes = await openai.embeddings.create({
-                    model: "text-embedding-3-small",
-                    input: sentences,
-                    dimensions: 1536,
-                });
+                    const embRes = await openai.embeddings.create({
+                        model: "text-embedding-3-small",
+                        input: sentences,
+                        dimensions: 1536,
+                    });
 
-                let bestSentence = "";
-                let bestSim = -1;
+                    let bestSentence = "";
+                    let bestSim = -1;
 
-                for (let i = 0; i < sentences.length; i++) {
-                    const sentenceEmb = embRes.data[i].embedding;
-                    const sim = cosineSimilarity(q_embedding, sentenceEmb);
-                    if (sim > bestSim) {
-                        bestSim = sim;
-                        bestSentence = sentences[i];
+                    for (let i = 0; i < sentences.length; i++) {
+                        const sentenceEmb = embRes.data[i].embedding;
+                        const sim = cosineSimilarity(q_embedding, sentenceEmb);
+                        if (sim > bestSim) {
+                            bestSim = sim;
+                            bestSentence = sentences[i];
+                        }
+                    }
+
+                    if (bestSentence) {
+                        item.highlight = bestSentence + (bestSentence.endsWith('.') ? '' : '...');
                     }
                 }
-
-                if (bestSentence) {
-                    item.highlight = bestSentence + (bestSentence.endsWith('.') ? '' : '...');
-                }
+            } catch (highlightErr) {
+                console.error("Highlight calculation error:", highlightErr);
             }
-        } catch (highlightErr) {
-            console.error("Highlight calculation error:", highlightErr);
         }
 
         // 5. Grouping by articulo_detectado
@@ -429,6 +438,11 @@ export async function POST(req: Request) {
                 titulo_articulo
             };
         });
+
+        // 6. Overwrite Answer with Literal Text
+        if (isLiteralMatch && processedData.length > 0) {
+            answer = processedData[0].texto || processedData[0].content || "Fragmento literal no encontrado.";
+        }
 
         // Return answer and data
         const okPayload: any = {
