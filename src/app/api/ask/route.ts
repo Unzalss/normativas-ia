@@ -237,6 +237,65 @@ export async function POST(req: Request) {
             debugInfo.textSearchResults = textResults.length;
         }
 
+        // 2.1 Concept Reinforcement Search (if no explicit exact match)
+        let conceptResults: any[] = [];
+        if (!searchTerm) {
+            const stopwords = new Set(['sobre', 'entre', 'hacia', 'hasta', 'desde', 'donde', 'cuando', 'porque', 'quien', 'quienes', 'cuales', 'segun', 'puede', 'pueden', 'deben', 'debe', 'tambien', 'estan', 'estos', 'estas', 'parte', 'forma', 'mismo', 'misma', 'aquel', 'aquella']);
+            const normalizeText = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+            const concepts = question
+                .split(/[\s,.;:!?()¿¡'"\-]+/)
+                .filter((w: string) => w.length >= 5)
+                .map((w: string) => w.toLowerCase())
+                .filter((w: string) => !stopwords.has(normalizeText(w)))
+                .slice(0, 5);
+
+            if (concepts.length > 0) {
+                console.log(`[CONCEPT SEARCH] Buscando conceptos:`, concepts);
+                const orConditions = concepts.map((c: string) => `texto.ilike.%${c}%,seccion.ilike.%${c}%`).join(',');
+
+                let conceptQuery = supabase
+                    .from('normas_partes')
+                    .select('id, norma_id, tipo, seccion, texto, normas!inner(codigo, titulo)')
+                    .or(orConditions)
+                    .limit(k * 2);
+
+                if (parsedNormaId !== null) {
+                    conceptQuery = conceptQuery.eq('norma_id', parsedNormaId);
+                }
+
+                const { data: cData, error: cError } = await conceptQuery;
+                if (cError) {
+                    console.error("Concept search error:", cError);
+                } else if (cData) {
+                    conceptResults = cData.map((row: any) => ({
+                        ...row,
+                        codigo: row.normas?.codigo,
+                        norma_titulo: row.normas?.titulo,
+                        score: 0.70 // Refuerzo
+                    })).filter((item: any) => isValidFragment(item.texto || item.content || ""));
+                }
+            }
+        }
+
+        if (conceptResults.length > 0) {
+            const combinedMap = new Map();
+            for (const row of validData) {
+                const key = row.parte_id || row.id;
+                combinedMap.set(key, { ...row, score: getScore(row) });
+            }
+            for (const row of conceptResults) {
+                const key = row.parte_id || row.id;
+                if (combinedMap.has(key)) {
+                    combinedMap.get(key).score = Math.max(combinedMap.get(key).score, 0.70);
+                } else {
+                    combinedMap.set(key, row);
+                }
+            }
+            validData = Array.from(combinedMap.values()).sort((a, b) => b.score - a.score);
+            debugInfo.conceptSearchResults = conceptResults.length;
+        }
+
         validData = validData.map((item: any) => {
             const textToMatch = item.texto || item.content || "";
             const matchArt = textToMatch.match(/art(í|i)culo\s+\d+/i);
