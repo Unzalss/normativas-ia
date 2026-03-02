@@ -179,6 +179,64 @@ export async function POST(req: Request) {
             }
         }
 
+        // HYBRID SEARCH: Text exact match
+        let textResults: any[] = [];
+        let searchTerm = null;
+        const quoteMatch = question.match(/"([^"]+)"/);
+        if (quoteMatch) {
+            searchTerm = quoteMatch[1];
+        } else {
+            const keywordMatch = question.match(/(art(?:í|i)culo\s+\d+|art\.\s*\d+|disposici(?:ó|o)n\s+[\w]+|anexo\s+[\w]+|cap(?:í|i)tulo\s+[\w]+)/i);
+            if (keywordMatch) {
+                searchTerm = keywordMatch[0];
+            }
+        }
+
+        if (searchTerm) {
+            console.log(`[TEXT SEARCH] Búsqueda exacta para: ${searchTerm}`);
+            let textQuery = supabase
+                .from('normas_partes')
+                .select('id, norma_id, tipo, seccion, texto, normas!inner(codigo, titulo)')
+                .or(`texto.ilike.%${searchTerm}%,seccion.ilike.%${searchTerm}%`)
+                .limit(k * 2);
+
+            if (parsedNormaId !== null) {
+                textQuery = textQuery.eq('norma_id', parsedNormaId);
+            }
+
+            const { data: txtData, error: txtError } = await textQuery;
+            if (txtError) {
+                console.error("Text search error:", txtError);
+            } else if (txtData) {
+                textResults = txtData.map((row: any) => ({
+                    ...row,
+                    codigo: row.normas?.codigo,
+                    norma_titulo: row.normas?.titulo,
+                    score: 0.99 // Alta puntuación para priorizar exact matches
+                })).filter((item: any) => isValidFragment(item.texto || item.content || ""));
+            }
+        }
+
+        if (textResults.length > 0) {
+            const combinedMap = new Map();
+            // Vector results
+            for (const row of validData) {
+                const key = row.parte_id || row.id;
+                combinedMap.set(key, { ...row, score: getScore(row) });
+            }
+            // Text results over vector results
+            for (const row of textResults) {
+                const key = row.parte_id || row.id;
+                if (combinedMap.has(key)) {
+                    combinedMap.get(key).score = Math.max(combinedMap.get(key).score, 0.99);
+                } else {
+                    combinedMap.set(key, row);
+                }
+            }
+            validData = Array.from(combinedMap.values()).sort((a, b) => b.score - a.score);
+            debugInfo.textSearchResults = textResults.length;
+        }
+
         validData = validData.map((item: any) => {
             const match = (item.texto || item.content || "").match(/art(í|i)culo\s+\d+/i);
             if (match) {
@@ -186,6 +244,11 @@ export async function POST(req: Request) {
             }
             return item;
         });
+
+        validData = validData.map((x: any) => ({
+            ...x,
+            score: typeof x.score === 'number' ? x.score : getScore(x)
+        })).sort((a: any, b: any) => b.score - a.score);
 
         // 1. Relevance Gate: Grounding & Threshold check
         let bestScore = 0;
