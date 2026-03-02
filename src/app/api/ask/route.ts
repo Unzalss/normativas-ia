@@ -243,7 +243,13 @@ export async function POST(req: Request) {
         const okPayload: any = {
             ok: true,
             answer: answer,
-            data: validData.slice(0, k)
+            data: validData.slice(0, k).map((item: any) => {
+                const match = (item.texto || item.content || "").match(/art(í|i)culo\s+\d+/i);
+                if (match) {
+                    return { ...item, articulo_detectado: match[0] };
+                }
+                return item;
+            })
         };
         if (xDebug) okPayload.debug = debugInfo;
 
