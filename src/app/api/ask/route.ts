@@ -241,7 +241,7 @@ export async function POST(req: Request) {
             const textToMatch = item.texto || item.content || "";
             const matchArt = textToMatch.match(/art(í|i)culo\s+\d+/i);
             const matchCap = textToMatch.match(/cap(í|i)tulo\s+[ivxlcdm]+/i);
-            const matchTitle = textToMatch.match(/art(?:í|i)culo\s+\d+\.\s+([^\n.]+)/i);
+            const matchTitle = textToMatch.match(/art(?:í|i)culo\s+\d+\.\s*([^\n.]+)/i);
 
             const newItem = { ...item };
             if (matchArt) {
