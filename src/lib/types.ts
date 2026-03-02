@@ -34,6 +34,8 @@ export interface Source {
     content: string;
     metadata?: NormaParteMetadata;
     articulo_detectado?: string;
+    capitulo_detectado?: string;
+    titulo_articulo?: string;
     highlight?: string;
 }
 

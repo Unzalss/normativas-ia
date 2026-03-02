@@ -163,6 +163,16 @@
     letter-spacing: 0.05em;
 }
 
+.capituloDetectadoTag {
+    display: block;
+    color: #6B7280;
+    font-size: 0.7rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
 .highlightQuote {
     font-style: italic;
     color: #0369A1;

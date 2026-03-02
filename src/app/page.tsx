@@ -177,6 +177,8 @@ export default function Home() {
                             score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
                             content: item.texto || item.content || "",
                             articulo_detectado: item.articulo_detectado,
+                            capitulo_detectado: item.capitulo_detectado,
+                            titulo_articulo: item.titulo_articulo,
                             highlight: item.highlight
                         };
                     });

@@ -162,11 +162,22 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                             {/* Texto del artículo si está seleccionado */}
                                             {isSelected && (
                                                 <div className={styles.sourceDetail}>
-                                                    {source.articulo_detectado && (
+                                                    {source.articulo_detectado && source.titulo_articulo ? (
                                                         <div className={styles.articuloDetectadoTag}>
-                                                            {source.articulo_detectado}
+                                                            {source.articulo_detectado.toUpperCase()} — {source.titulo_articulo}
+                                                        </div>
+                                                    ) : source.articulo_detectado ? (
+                                                        <div className={styles.articuloDetectadoTag}>
+                                                            {source.articulo_detectado.toUpperCase()}
+                                                        </div>
+                                                    ) : null}
+
+                                                    {source.capitulo_detectado && source.capitulo_detectado.toUpperCase() !== source.subtitle?.toUpperCase() && (
+                                                        <div className={styles.capituloDetectadoTag}>
+                                                            {source.capitulo_detectado.toUpperCase()}
                                                         </div>
                                                     )}
+
                                                     {source.highlight && (
                                                         <div className={styles.highlightQuote}>
                                                             "{source.highlight}"
