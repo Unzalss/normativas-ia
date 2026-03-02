@@ -196,7 +196,7 @@ export async function POST(req: Request) {
         debugInfo.mediumCount = mediumCount;
 
         // Condición para permitir OpenAI
-        const hasEnoughEvidence = (strongCount >= 1 || mediumCount >= 2);
+        const hasEnoughEvidence = bestScore >= 0.55 && (strongCount >= 1 || mediumCount >= 2);
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
         if (!validData.length || !hasEnoughEvidence) {
@@ -212,7 +212,7 @@ export async function POST(req: Request) {
         // 3. RAG Generation
         let answer = "";
         try {
-            const context = validData.slice(0, 6).map((x: any, i: number) => `[${i + 1}] ${x.seccion || 'Fragmento'}: ${x.texto || x.content}`).join("\n\n");
+            const context = validData.slice(0, 3).map((x: any, i: number) => `[${i + 1}] ${x.seccion || 'Fragmento'}: ${x.texto || x.content}`).join("\n\n");
 
             const completion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
