@@ -33,6 +33,7 @@ export interface Source {
     score: number;
     content: string;
     metadata?: NormaParteMetadata;
+    articulo_detectado?: string;
 }
 
 export interface ResponseData {

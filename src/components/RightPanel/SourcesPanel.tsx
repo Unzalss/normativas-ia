@@ -162,6 +162,11 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                             {/* Texto del artículo si está seleccionado */}
                                             {isSelected && (
                                                 <div className={styles.sourceDetail}>
+                                                    {source.articulo_detectado && (
+                                                        <div className={styles.articuloDetectadoTag}>
+                                                            {source.articulo_detectado}
+                                                        </div>
+                                                    )}
                                                     <div className={styles.detailContent}>
                                                         {source.content}
                                                     </div>

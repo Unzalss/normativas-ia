@@ -175,7 +175,8 @@ export default function Home() {
                             normaId: item.norma_id,
                             type: 'PDF',
                             score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
-                            content: item.texto || item.content || ""
+                            content: item.texto || item.content || "",
+                            articulo_detectado: item.articulo_detectado
                         };
                     });
 
