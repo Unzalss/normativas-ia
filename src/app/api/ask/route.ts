@@ -238,11 +238,22 @@ export async function POST(req: Request) {
         }
 
         validData = validData.map((item: any) => {
-            const match = (item.texto || item.content || "").match(/art(í|i)culo\s+\d+/i);
-            if (match) {
-                return { ...item, articulo_detectado: match[0] };
+            const textToMatch = item.texto || item.content || "";
+            const matchArt = textToMatch.match(/art(í|i)culo\s+\d+/i);
+            const matchCap = textToMatch.match(/cap(í|i)tulo\s+[ivxlcdm]+/i);
+            const matchTitle = textToMatch.match(/art(?:í|i)culo\s+\d+\.\s+([^\n.]+)/i);
+
+            const newItem = { ...item };
+            if (matchArt) {
+                newItem.articulo_detectado = matchArt[0];
             }
-            return item;
+            if (matchCap) {
+                newItem.capitulo_detectado = matchCap[0];
+            }
+            if (matchTitle && matchTitle[1]) {
+                newItem.titulo_articulo = matchTitle[1].trim();
+            }
+            return newItem;
         });
 
         validData = validData.map((x: any) => ({
@@ -405,12 +416,17 @@ export async function POST(req: Request) {
 
             const combinedText = group.map((f: any) => f.texto || f.content || "").join("\n\n[...]\n\n");
 
+            const capitulo_detectado = group.find((f: any) => f.capitulo_detectado)?.capitulo_detectado || bestFragment.capitulo_detectado;
+            const titulo_articulo = group.find((f: any) => f.titulo_articulo)?.titulo_articulo || bestFragment.titulo_articulo;
+
             return {
                 ...bestFragment,
                 texto: combinedText,
                 content: combinedText,
                 score: maxScore,
-                highlight: bestHighlight
+                highlight: bestHighlight,
+                capitulo_detectado,
+                titulo_articulo
             };
         });
 
