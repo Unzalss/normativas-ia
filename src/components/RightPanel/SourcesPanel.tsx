@@ -149,8 +149,19 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                                 }}
                                             >
                                                 <div className={styles.fragmentInfo}>
-                                                    <div className={styles.fragmentTitle}>{source.subtitle || "Fragmento"}</div>
-                                                    <div className={styles.sourceMeta}>
+                                                    <div className={styles.fragmentTitle}>
+                                                        {source.articulo_detectado && source.titulo_articulo
+                                                            ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')} — ${source.titulo_articulo}`
+                                                            : source.articulo_detectado
+                                                                ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')}`
+                                                                : source.subtitle || "Fragmento"}
+                                                    </div>
+                                                    {source.capitulo_detectado && source.capitulo_detectado.toUpperCase() !== source.subtitle?.toUpperCase() && (
+                                                        <div className={styles.capituloDetectadoTag} style={{ marginBottom: 0, marginTop: '4px' }}>
+                                                            {source.capitulo_detectado.toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className={styles.sourceMeta} style={{ marginTop: '4px' }}>
                                                         <span className={styles.score}>{(source.score * 100).toFixed(0)}% relevant</span>
                                                     </div>
                                                 </div>
@@ -162,22 +173,6 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                             {/* Texto del artículo si está seleccionado */}
                                             {isSelected && (
                                                 <div className={styles.sourceDetail}>
-                                                    {source.articulo_detectado && source.titulo_articulo ? (
-                                                        <div className={styles.articuloDetectadoTag}>
-                                                            {source.articulo_detectado.toUpperCase()} — {source.titulo_articulo}
-                                                        </div>
-                                                    ) : source.articulo_detectado ? (
-                                                        <div className={styles.articuloDetectadoTag}>
-                                                            {source.articulo_detectado.toUpperCase()}
-                                                        </div>
-                                                    ) : null}
-
-                                                    {source.capitulo_detectado && source.capitulo_detectado.toUpperCase() !== source.subtitle?.toUpperCase() && (
-                                                        <div className={styles.capituloDetectadoTag}>
-                                                            {source.capitulo_detectado.toUpperCase()}
-                                                        </div>
-                                                    )}
-
                                                     {source.highlight && (
                                                         <div className={styles.highlightQuote}>
                                                             "{source.highlight}"
