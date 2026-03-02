@@ -17,6 +17,7 @@ export default function Home() {
     const [response, setResponse] = useState<ResponseData | undefined>(undefined);
     const [sources, setSources] = useState<Source[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [normas, setNormas] = useState<{ id: number, titulo: string }[]>([]);
     const [selectedNormaId, setSelectedNormaId] = useState<number | null>(null);
 
@@ -53,7 +54,8 @@ export default function Home() {
         setResponse(undefined);
         setSources([]);
         setSelectedSourceId(null);
-        setSelectedNormaId(null);
+        setError(null);
+        // NO resetear: selectedNormaId
     };
 
     const handleQuery = async (text: string) => {
@@ -62,6 +64,7 @@ export default function Home() {
         setResponse(undefined);
         setSources([]);
         setSelectedSourceId(null);
+        setError(null);
 
         try {
             const res = await fetch('/api/ask', {
@@ -205,9 +208,9 @@ export default function Home() {
                     setSelectedHistoryId(newHistoryItem.id);
                 }
             }
-        } catch (error) {
-            console.error("Error asking API:", error);
-            // Optionally set error state in UI
+        } catch (err: any) {
+            console.error("Error asking API:", err);
+            setError(err.message || "Ocurrió un error en la consulta.");
         } finally {
             setIsLoading(false);
         }
@@ -233,6 +236,7 @@ export default function Home() {
                     query={currentQuery}
                     response={response}
                     isLoading={isLoading}
+                    error={error}
                     onQuery={handleQuery}
                     onCitationClick={handleCitationClick}
                     normas={normas}

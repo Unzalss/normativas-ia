@@ -15,9 +15,10 @@ interface QueryPanelProps {
     normas: Array<{ id: number, titulo: string }>;
     selectedNormaId: number | null;
     onSelectNormaId: (id: number | null) => void;
+    error?: string | null;
 }
 
-export default function QueryPanel({ query, response, isLoading, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId }: QueryPanelProps) {
+export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId }: QueryPanelProps) {
     const [text, setText] = useState(query);
 
     // Sync local state when prop changes (restoring history)
@@ -98,7 +99,18 @@ export default function QueryPanel({ query, response, isLoading, onQuery, onCita
                     </div>
                 </div>
 
-                {response && (
+                {error && (
+                    <div className={styles.responseSection}>
+                        <div className={styles.responseCard} style={{ borderLeftColor: '#ef4444' }}>
+                            <h2 className={styles.responseTitle} style={{ color: '#ef4444' }}>Error</h2>
+                            <div className={styles.responseText}>
+                                <p>{error}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {response && !error && (
                     <div className={styles.responseSection}>
                         <div className={styles.responseCard}>
                             <h2 className={styles.responseTitle}>Respuesta</h2>

@@ -202,7 +202,7 @@ export async function POST(req: Request) {
         if (!validData.length || !hasEnoughEvidence) {
             const respPayload: any = {
                 ok: true,
-                data: validData.slice(0, k), // Se devuelven las fuentes (aún insuficientes) para transparencia visual
+                data: [], // Se devuelve un array vacío porque no hay evidencia suficiente
                 message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
             };
             if (xDebug) respPayload.debug = debugInfo;
@@ -228,9 +228,15 @@ export async function POST(req: Request) {
         } catch (openaiError: any) {
             console.error("OpenAI RAG error:", openaiError);
             debugInfo.openaiError = openaiError?.message;
-            // Fallback: first fragment trimmed
-            const first = validData[0];
-            answer = (first.content || first.texto || "").substring(0, 500) + "...";
+
+            // Si falla OpenAI, devolvemos lo mismo que si no hubiera evidencia
+            const respPayload: any = {
+                ok: true,
+                data: [],
+                message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
+            };
+            if (xDebug) respPayload.debug = debugInfo;
+            return NextResponse.json(respPayload);
         }
 
         // Return answer and data
