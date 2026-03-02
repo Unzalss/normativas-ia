@@ -176,7 +176,8 @@ export default function Home() {
                             type: 'PDF',
                             score: typeof item.score === 'number' ? item.score : (item.similarity || 0),
                             content: item.texto || item.content || "",
-                            articulo_detectado: item.articulo_detectado
+                            articulo_detectado: item.articulo_detectado,
+                            highlight: item.highlight
                         };
                     });
 

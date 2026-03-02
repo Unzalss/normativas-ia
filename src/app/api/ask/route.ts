@@ -316,11 +316,64 @@ export async function POST(req: Request) {
             return NextResponse.json(respPayload);
         }
 
+        // 4. Highlight Generation
+        const topKData = validData.slice(0, k);
+        const cosineSimilarity = (vecA: number[], vecB: number[]) => {
+            let dotProduct = 0, normA = 0, normB = 0;
+            for (let i = 0; i < vecA.length; i++) {
+                dotProduct += vecA[i] * vecB[i];
+                normA += vecA[i] * vecA[i];
+                normB += vecB[i] * vecB[i];
+            }
+            if (normA === 0 || normB === 0) return 0;
+            return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        };
+
+        try {
+            for (const item of topKData) {
+                const textBase = item.texto || item.content || "";
+                if (!textBase) continue;
+
+                // Split into sentences (by dot or newline), filter empty, max 8
+                const sentences = textBase
+                    .split(/(?:\.|\n)+/)
+                    .map((s: string) => s.trim())
+                    .filter((s: string) => s.length > 20)
+                    .slice(0, 8);
+
+                if (sentences.length === 0) continue;
+
+                const embRes = await openai.embeddings.create({
+                    model: "text-embedding-3-small",
+                    input: sentences,
+                    dimensions: 1536,
+                });
+
+                let bestSentence = "";
+                let bestSim = -1;
+
+                for (let i = 0; i < sentences.length; i++) {
+                    const sentenceEmb = embRes.data[i].embedding;
+                    const sim = cosineSimilarity(q_embedding, sentenceEmb);
+                    if (sim > bestSim) {
+                        bestSim = sim;
+                        bestSentence = sentences[i];
+                    }
+                }
+
+                if (bestSentence) {
+                    item.highlight = bestSentence + (bestSentence.endsWith('.') ? '' : '...');
+                }
+            }
+        } catch (highlightErr) {
+            console.error("Highlight calculation error:", highlightErr);
+        }
+
         // Return answer and data
         const okPayload: any = {
             ok: true,
             answer: answer,
-            data: validData.slice(0, k)
+            data: topKData
         };
         if (xDebug) okPayload.debug = debugInfo;
 

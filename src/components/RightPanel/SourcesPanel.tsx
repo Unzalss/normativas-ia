@@ -167,6 +167,11 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                                             {source.articulo_detectado}
                                                         </div>
                                                     )}
+                                                    {source.highlight && (
+                                                        <div className={styles.highlightQuote}>
+                                                            "{source.highlight}"
+                                                        </div>
+                                                    )}
                                                     <div className={styles.detailContent}>
                                                         {source.content}
                                                     </div>

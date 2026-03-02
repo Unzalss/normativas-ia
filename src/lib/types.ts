@@ -34,6 +34,7 @@ export interface Source {
     content: string;
     metadata?: NormaParteMetadata;
     articulo_detectado?: string;
+    highlight?: string;
 }
 
 export interface ResponseData {
