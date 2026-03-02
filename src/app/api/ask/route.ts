@@ -369,11 +369,56 @@ export async function POST(req: Request) {
             console.error("Highlight calculation error:", highlightErr);
         }
 
+        // 5. Grouping by articulo_detectado
+        const groupedMap = new Map();
+        const finalData: any[] = [];
+
+        for (const item of topKData) {
+            if (!item.articulo_detectado) {
+                finalData.push(item);
+                continue;
+            }
+
+            const key = item.norma_id ? `${item.norma_id}-${item.articulo_detectado}` : item.articulo_detectado;
+
+            if (groupedMap.has(key)) {
+                groupedMap.get(key).push(item);
+            } else {
+                const group = [item];
+                groupedMap.set(key, group);
+                finalData.push(group); // En vez de pushear el item, pusheamos la referencia al array del grupo para mantener el orden de inserción (el del mayor score)
+            }
+        }
+
+        const processedData = finalData.map(group => {
+            if (!Array.isArray(group)) return group; // Item sin articulo_detectado
+
+            if (group.length === 1) return group[0];
+
+            // El de mayor score es el primero según entraron (porque topKData ya viene ordenado por score)
+            const bestFragment = group[0];
+            const maxScore = bestFragment.score;
+            const bestHighlight = bestFragment.highlight;
+
+            // Ordenamos internamente por el 'orden' original del documento para que tengan sentido al leerse juntos
+            group.sort((a: any, b: any) => (a.orden || 0) - (b.orden || 0));
+
+            const combinedText = group.map((f: any) => f.texto || f.content || "").join("\n\n[...]\n\n");
+
+            return {
+                ...bestFragment,
+                texto: combinedText,
+                content: combinedText,
+                score: maxScore,
+                highlight: bestHighlight
+            };
+        });
+
         // Return answer and data
         const okPayload: any = {
             ok: true,
             answer: answer,
-            data: topKData
+            data: processedData
         };
         if (xDebug) okPayload.debug = debugInfo;
 
