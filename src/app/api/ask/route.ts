@@ -179,6 +179,14 @@ export async function POST(req: Request) {
             }
         }
 
+        validData = validData.map((item: any) => {
+            const match = (item.texto || item.content || "").match(/art(í|i)culo\s+\d+/i);
+            if (match) {
+                return { ...item, articulo_detectado: match[0] };
+            }
+            return item;
+        });
+
         // 1. Relevance Gate: Grounding & Threshold check
         let bestScore = 0;
         let strongCount = 0;
@@ -212,12 +220,18 @@ export async function POST(req: Request) {
         // 3. RAG Generation
         let answer = "";
         try {
-            const context = validData.slice(0, 3).map((x: any, i: number) => `[${i + 1}] ${x.seccion || 'Fragmento'}: ${x.texto || x.content}`).join("\n\n");
+            const context = validData.slice(0, 3).map((x: any, i: number) => {
+                let header = x.seccion || 'Fragmento';
+                if (x.articulo_detectado) {
+                    header += ` (articulo_detectado: ${x.articulo_detectado})`;
+                }
+                return `[${i + 1}] ${header}: ${x.texto || x.content}`;
+            }).join("\n\n");
 
             const completion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
-                    { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo." },
+                    { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo. Cuando respondas debes citar el artículo usando el formato [Artículo X] si aparece en el contexto. No inventar artículos. Si el contexto contiene un fragmento con articulo_detectado, usar esa referencia." },
                     { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` }
                 ],
                 max_tokens: 300, // Limit to ~1200 chars roughly
@@ -243,13 +257,7 @@ export async function POST(req: Request) {
         const okPayload: any = {
             ok: true,
             answer: answer,
-            data: validData.slice(0, k).map((item: any) => {
-                const match = (item.texto || item.content || "").match(/art(í|i)culo\s+\d+/i);
-                if (match) {
-                    return { ...item, articulo_detectado: match[0] };
-                }
-                return item;
-            })
+            data: validData.slice(0, k)
         };
         if (xDebug) okPayload.debug = debugInfo;
 
