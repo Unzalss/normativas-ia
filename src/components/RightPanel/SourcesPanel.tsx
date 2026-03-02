@@ -151,7 +151,7 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                                 <div className={styles.fragmentInfo}>
                                                     <div className={styles.fragmentTitle}>
                                                         {source.articulo_detectado && source.titulo_articulo
-                                                            ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')} — ${source.titulo_articulo}`
+                                                            ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')} — ${source.titulo_articulo.toUpperCase()}`
                                                             : source.articulo_detectado
                                                                 ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')}`
                                                                 : source.subtitle || "Fragmento"}
