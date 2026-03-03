@@ -362,7 +362,7 @@ export async function POST(req: Request) {
             if (questionConcepts.length > 0) {
                 const itemTextLog = String(item.texto || item.content || "").toLowerCase();
                 const normItemText = normLocalInfo(itemTextLog);
-                const hitConcept = questionConcepts.some(c => normItemText.includes(normLocalInfo(c)));
+                const hitConcept = questionConcepts.some((c: string) => normItemText.includes(normLocalInfo(c)));
                 if (hitConcept) {
                     boost += 0.08;
                 }
