@@ -328,6 +328,10 @@ export async function POST(req: Request) {
         const penaltyWords = ["preámbulo", "preambulo", "índice", "indice", "anexo", "tabla", "disposición", "disposicion", "exposición de motivos", "exposicion de motivos"];
         const hasPenaltyInQuestion = penaltyWords.some(w => questionLower.includes(w));
 
+        const articulo_detectado = question.match(/(art(?:í|i)culo|art\.)\s*\d+/i)?.[0] ?? null;
+        const qMatchTitle = question.match(/art(?:í|i)culo\s+\d+\.\s*([^\n.]+)/i);
+        const titulo_articulo = qMatchTitle ? qMatchTitle[1].trim() : null;
+
         const scoreBoost = (item: any) => {
             let boost = 0;
 
