@@ -404,8 +404,9 @@ export async function POST(req: Request) {
         if (!validData.length || !hasEnoughEvidence) {
             const respPayload: any = {
                 ok: true,
-                data: [], // Se devuelve un array vacío porque no hay evidencia suficiente
-                message: "No consta en la normativa cargada (o no hay evidencia suficiente en los fragmentos recuperados)."
+                answer: "No consta en las normas consultadas.",
+                sources: [],
+                highlights: []
             };
             if (xDebug) respPayload.debug = debugInfo;
             return NextResponse.json(respPayload);
