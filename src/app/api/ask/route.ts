@@ -120,7 +120,7 @@ export async function POST(req: Request) {
 
         let rawData: any[] = [];
 
-        if (parsedNormaId !== null) {
+        if (parsedNormaId) {
             console.log(`[NORMA] Búsqueda en norma ${parsedNormaId}`);
             // First attempt with requested k
             // The RPC "buscar_norma_partes" accepts: q_embedding, q_norma_id, k.
