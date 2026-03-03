@@ -315,10 +315,67 @@ export async function POST(req: Request) {
             return newItem;
         });
 
-        validData = validData.map((x: any) => ({
-            ...x,
-            score: typeof x.score === 'number' ? x.score : getScore(x)
-        })).sort((a: any, b: any) => b.score - a.score);
+        const stopwordsBasicReRank = new Set(['sobre', 'entre', 'hacia', 'hasta', 'desde', 'donde', 'cuando', 'porque', 'quien', 'quienes', 'cuales', 'segun', 'puede', 'pueden', 'deben', 'debe', 'tambien', 'estan', 'estos', 'estas', 'parte', 'forma', 'mismo', 'misma', 'aquel', 'aquella']);
+        const normLocalInfo = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const questionConcepts = question
+            .split(/[\s,.;:!?()¿¡'"\-]+/)
+            .filter((w: string) => w.length >= 5)
+            .map((w: string) => w.toLowerCase())
+            .filter((w: string) => !stopwordsBasicReRank.has(normLocalInfo(w)))
+            .slice(0, 3);
+
+        const questionLower = question.toLowerCase();
+        const penaltyWords = ["preámbulo", "preambulo", "índice", "indice", "anexo", "tabla", "disposición", "disposicion", "exposición de motivos", "exposicion de motivos"];
+        const hasPenaltyInQuestion = penaltyWords.some(w => questionLower.includes(w));
+
+        const scoreBoost = (item: any) => {
+            let boost = 0;
+
+            if (articulo_detectado) {
+                const detectedNum = String(articulo_detectado).match(/\d+/)?.[0];
+                const itemArt = item.articulo_num || item.articulo || item.metadata?.articulo || item.metadata?.articulo_num;
+                if (detectedNum && itemArt && String(itemArt).match(/\d+/)?.[0] === detectedNum) {
+                    boost += 0.25;
+                }
+            }
+
+            if (titulo_articulo) {
+                const titDet = String(titulo_articulo).toLowerCase();
+                const itemTit = String(item.articulo_titulo || item.titulo || item.heading || item.caption || item.metadata?.articulo_titulo || "").toLowerCase();
+                if (titDet && itemTit.includes(titDet)) {
+                    boost += 0.12;
+                }
+            }
+
+            if (!hasPenaltyInQuestion) {
+                const itemPartsText = String(item.articulo_titulo || item.seccion || item.parte_titulo || item.texto || "").toLowerCase();
+                const hitPenalty = penaltyWords.some(w => itemPartsText.includes(w));
+                if (hitPenalty) {
+                    boost -= 0.20;
+                }
+            }
+
+            if (questionConcepts.length > 0) {
+                const itemTextLog = String(item.texto || item.content || "").toLowerCase();
+                const normItemText = normLocalInfo(itemTextLog);
+                const hitConcept = questionConcepts.some(c => normItemText.includes(normLocalInfo(c)));
+                if (hitConcept) {
+                    boost += 0.08;
+                }
+            }
+
+            return boost;
+        };
+
+        validData = validData.map((x: any) => {
+            const baseScore = typeof x.score === 'number' ? x.score : getScore(x);
+            const boost = scoreBoost(x);
+            return {
+                ...x,
+                score: baseScore,
+                finalScore: baseScore + boost
+            };
+        }).sort((a: any, b: any) => b.finalScore - a.finalScore);
 
         // 1. Relevance Gate: Grounding & Threshold check
         let bestScore = 0;
