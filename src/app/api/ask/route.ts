@@ -402,14 +402,13 @@ export async function POST(req: Request) {
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
         if (!validData.length || !hasEnoughEvidence) {
-            const respPayload: any = {
+            return NextResponse.json({
                 ok: true,
                 answer: "No consta en las normas consultadas.",
                 sources: [],
-                highlights: []
-            };
-            if (xDebug) respPayload.debug = debugInfo;
-            return NextResponse.json(respPayload);
+                highlights: [],
+                ...(xDebug && { debug: debugInfo })
+            });
         }
 
         // 2.5 Literal Mode Detection
