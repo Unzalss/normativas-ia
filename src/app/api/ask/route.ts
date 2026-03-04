@@ -565,11 +565,20 @@ export async function POST(req: Request) {
         }
 
         // Return answer and data
+        const answerLower = answer.toLowerCase();
+        const isNoInfo = ["no contiene información", "no puedo responder", "no consta", "no se menciona"].some(phrase => answerLower.includes(phrase));
+
         const okPayload: any = {
             ok: true,
-            answer: answer,
-            data: processedData
+            answer: isNoInfo ? "No consta en las normas consultadas." : answer,
+            data: isNoInfo ? [] : processedData,
         };
+
+        if (isNoInfo) {
+            okPayload.sources = [];
+            okPayload.highlights = [];
+        }
+
         if (xDebug) okPayload.debug = debugInfo;
 
         return NextResponse.json(okPayload);
