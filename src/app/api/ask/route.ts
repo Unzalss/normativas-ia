@@ -398,7 +398,7 @@ export async function POST(req: Request) {
         debugInfo.mediumCount = mediumCount;
 
         // Condición para permitir OpenAI
-        const hasEnoughEvidence = bestScore >= 0.55 && (strongCount >= 1 || mediumCount >= 2);
+        const hasEnoughEvidence = validData.length >= 2 && bestScore >= 0.55 && (strongCount >= 1 || mediumCount >= 2);
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
         if (!validData.length || !hasEnoughEvidence) {
