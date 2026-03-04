@@ -566,7 +566,16 @@ export async function POST(req: Request) {
 
         // Return answer and data
         const answerLower = answer.toLowerCase();
-        const isNoInfo = ["no contiene información", "no puedo responder", "no consta", "no se menciona"].some(phrase => answerLower.includes(phrase));
+        const negativePatterns = [
+            "no consta",
+            "no se menciona",
+            "no menciona",
+            "no contiene información",
+            "no hay información",
+            "no puedo responder",
+            "no se encuentra información"
+        ];
+        const isNoInfo = negativePatterns.some(p => answerLower.includes(p));
 
         const okPayload: any = {
             ok: true,
