@@ -1,0 +1,1 @@
+ALTER TABLE public.normas_partes ADD COLUMN jurisdiction text; ALTER TABLE public.normas_partes ADD COLUMN norm_type text; ALTER TABLE public.normas_partes ADD COLUMN year integer; ALTER TABLE public.normas_partes ADD COLUMN article_number text;
