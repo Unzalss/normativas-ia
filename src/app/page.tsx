@@ -87,6 +87,9 @@ export default function Home() {
                 'Content-Type': 'application/json',
             };
             if (token) headers['Authorization'] = `Bearer ${token}`;
+            if (typeof window !== 'undefined' && window.location.search.includes('debug=1')) {
+                headers['x-debug'] = '1';
+            }
 
             const res = await fetch('/api/ask', {
                 method: 'POST',
