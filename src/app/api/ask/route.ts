@@ -23,6 +23,14 @@ export async function POST(req: Request) {
             process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
+        const authHeader = req.headers.get("Authorization");
+        let userId: string | null = null;
+        if (authHeader) {
+            const token = authHeader.replace("Bearer ", "");
+            const { data: { user } } = await supabase.auth.getUser(token);
+            if (user) userId = user.id;
+        }
+
         // Parse normaId explicitly to ensure global searches
         let parsedNormaId: number | null = null;
 
@@ -33,7 +41,7 @@ export async function POST(req: Request) {
 
             const { data: normaRow, error: normaError } = await supabase
                 .from("normas")
-                .select("id")
+                .select("id, owner_user_id")
                 .ilike("codigo", codigoNormalizado)
                 .limit(1)
                 .maybeSingle();
@@ -52,10 +60,32 @@ export async function POST(req: Request) {
                 );
             }
 
+            if (normaRow.owner_user_id && normaRow.owner_user_id !== userId) {
+                return NextResponse.json(
+                    { error: "No tienes permiso para consultar esta norma privada." },
+                    { status: 403 }
+                );
+            }
+
             parsedNormaId = normaRow.id;
         } else if (normaId !== null && normaId !== undefined && normaId !== "" && String(normaId) !== "all") {
             const num = Number(normaId);
-            if (!isNaN(num)) parsedNormaId = num;
+            if (!isNaN(num)) {
+                parsedNormaId = num;
+
+                const { data: normaAuthCheck } = await supabase
+                    .from("normas")
+                    .select("owner_user_id")
+                    .eq("id", parsedNormaId)
+                    .single();
+
+                if (normaAuthCheck?.owner_user_id && normaAuthCheck.owner_user_id !== userId) {
+                    return NextResponse.json(
+                        { error: "No tienes permiso para consultar esta norma privada." },
+                        { status: 403 }
+                    );
+                }
+            }
         }
 
         const debugInfo: any = {
@@ -90,8 +120,14 @@ export async function POST(req: Request) {
             return 0;
         };
 
-        const busquedaGlobal = async (qEmbedding: number[]) => {
-            const { data: normas } = await supabase.from("normas").select("id,codigo").limit(MAX_NORMAS);
+        const busquedaGlobal = async (qEmbedding: number[], allowedIds: number[]) => {
+            if (allowedIds.length === 0) return [];
+
+            const { data: normas } = await supabase
+                .from("normas")
+                .select("id,codigo")
+                .in("id", allowedIds)
+                .limit(MAX_NORMAS);
             if (!normas || normas.length === 0) return [];
             console.log(`[GLOBAL] Buscando en ${normas.length} normas...`);
 
@@ -145,7 +181,20 @@ export async function POST(req: Request) {
             console.log(`Filas devueltas 1: ${rawData.length}`);
         } else {
             console.log(`[GLOBAL] Iniciando búsqueda global...`);
-            rawData = await busquedaGlobal(q_embedding);
+
+            let allowedNormaIds: number[] = [];
+            let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
+
+            if (userId) {
+                query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+            } else {
+                query = query.is("owner_user_id", null);
+            }
+
+            const { data: ns } = await query;
+            if (ns) allowedNormaIds = ns.map(n => n.id);
+
+            rawData = await busquedaGlobal(q_embedding, allowedNormaIds);
             debugInfo.rowsLength = rawData.length;
             console.log(`Filas devueltas (Global al final): ${rawData.length}`);
         }
@@ -202,6 +251,21 @@ export async function POST(req: Request) {
 
             if (parsedNormaId !== null) {
                 textQuery = textQuery.eq('norma_id', parsedNormaId);
+            } else {
+                let allowedNormaIds: number[] = [];
+                let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
+                if (userId) {
+                    query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+                } else {
+                    query = query.is("owner_user_id", null);
+                }
+                const { data: ns } = await query;
+                if (ns && ns.length > 0) {
+                    allowedNormaIds = ns.map(n => n.id);
+                    textQuery = textQuery.in('norma_id', allowedNormaIds);
+                } else {
+                    textQuery = textQuery.eq('norma_id', -1);
+                }
             }
 
             const { data: txtData, error: txtError } = await textQuery;
@@ -262,6 +326,21 @@ export async function POST(req: Request) {
 
                 if (parsedNormaId !== null) {
                     conceptQuery = conceptQuery.eq('norma_id', parsedNormaId);
+                } else {
+                    let allowedNormaIds: number[] = [];
+                    let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
+                    if (userId) {
+                        query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+                    } else {
+                        query = query.is("owner_user_id", null);
+                    }
+                    const { data: ns } = await query;
+                    if (ns && ns.length > 0) {
+                        allowedNormaIds = ns.map(n => n.id);
+                        conceptQuery = conceptQuery.in('norma_id', allowedNormaIds);
+                    } else {
+                        conceptQuery = conceptQuery.eq('norma_id', -1);
+                    }
                 }
 
                 const { data: cData, error: cError } = await conceptQuery;

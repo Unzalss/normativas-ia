@@ -1,11 +1,18 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import ThreePanelLayout from '@/components/Layout/ThreePanelLayout';
 import HistorySidebar from '@/components/Sidebar/HistorySidebar';
 import QueryPanel from '@/components/Main/QueryPanel';
 import SourcesPanel from '@/components/RightPanel/SourcesPanel';
 import { HistoryItem, ResponseData, Source } from '@/lib/types';
+
+// Creamos un cliente público ligero apuntando al proyecto actual
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function Home() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -24,7 +31,13 @@ export default function Home() {
     useEffect(() => {
         async function fetchNormas() {
             try {
-                const res = await fetch('/api/normas');
+                const { data: { session } } = await supabase.auth.getSession();
+                const token = session?.access_token;
+
+                const headers: HeadersInit = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                const res = await fetch('/api/normas', { headers });
                 const json = await res.json();
                 if (json.ok && json.data) {
                     setNormas(json.data);
@@ -67,11 +80,17 @@ export default function Home() {
         setError(null);
 
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            const headers: HeadersInit = {
+                'Content-Type': 'application/json',
+            };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const res = await fetch('/api/ask', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers,
                 body: JSON.stringify({
                     question: text,
                     normaId: selectedNormaId,
