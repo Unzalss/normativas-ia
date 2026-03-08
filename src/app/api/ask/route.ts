@@ -247,10 +247,21 @@ export async function POST(req: Request) {
 
         if (searchTerm) {
             console.log(`[TEXT SEARCH] Búsqueda exacta para: ${searchTerm}`);
+
+            let orCondition = `texto.ilike.%${searchTerm}%,seccion.ilike.%${searchTerm}%`;
+
+            // Detectar si el searchTerm es explícitamente un artículo (ej: "articulo 3", "art 3", "art. 3")
+            const isArticleQuery = searchTerm.match(/(?:art(?:í|i)culo|art\.?)\s+(\d+)/i);
+            if (isArticleQuery) {
+                const num = isArticleQuery[1];
+                // Usar "_" como comodín de un solo carácter para saltarnos el problema del acento (art_culo)
+                orCondition = `seccion.ilike.%art_culo ${num}%,seccion.ilike.%art_culo ${num}.%,texto.ilike.%${searchTerm}%`;
+            }
+
             let textQuery = supabase
                 .from('normas_partes')
                 .select('id, norma_id, tipo, seccion, texto, normas!inner(codigo, titulo)')
-                .or(`texto.ilike.%${searchTerm}%,seccion.ilike.%${searchTerm}%`)
+                .or(orCondition)
                 .limit(k * 2);
 
             if (parsedNormaId !== null) {
