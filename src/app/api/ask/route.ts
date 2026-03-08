@@ -199,7 +199,7 @@ export async function POST(req: Request) {
             console.log(`Filas devueltas (Global al final): ${rawData.length}`);
         }
 
-        let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65 && (item.article_number || item.articleNumber));
+        let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65);
 
         // If not enough valid results, try fetching more (sólo para búsquedas de una norma)
         if (validData.length < k && parsedNormaId !== null) {
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
             console.log(`Filas devueltas 2: ${retryData?.length || 0}`);
 
             if (!retryError && retryData) {
-                validData = retryData.filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65 && (item.article_number || item.articleNumber));
+                validData = retryData.filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65);
             }
         }
 
