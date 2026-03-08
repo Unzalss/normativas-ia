@@ -199,6 +199,10 @@ export async function POST(req: Request) {
             console.log(`Filas devueltas (Global al final): ${rawData.length}`);
         }
 
+        if (rawData && rawData.length > 0) {
+            console.log("DEBUG rawData[0]:", rawData[0]);
+        }
+
         let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65);
 
         // If not enough valid results, try fetching more (sólo para búsquedas de una norma)
