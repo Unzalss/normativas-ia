@@ -26,6 +26,9 @@ export async function processNormaPipeline(
 
     const calculatedNormType = metadata.rango || "Norma Jurídica";
     let insertedCount = 0;
+    let num_articulos_detectados = 0;
+    let num_anexos_detectados = 0;
+    let num_embeddings_generados = 0;
 
     // 2. Vectorización Batch optimizada de OpenAI
     const BATCH_SIZE = 50;
@@ -68,7 +71,11 @@ export async function processNormaPipeline(
             let embeddingArray = null;
             if (textsToVectorize[idx] !== null && embIndex < batchEmbeddings.length) {
                 embeddingArray = batchEmbeddings[embIndex++];
+                num_embeddings_generados++;
             }
+
+            if (frag.tipo === 'articulo') num_articulos_detectados++;
+            if (frag.tipo === 'anexo') num_anexos_detectados++;
 
             return {
                 norma_id: normaId,
@@ -101,6 +108,9 @@ export async function processNormaPipeline(
     await supabase.from('normas').update({
         estado_ingesta: 'lista',
         num_fragmentos: insertedCount,
+        num_articulos_detectados,
+        num_anexos_detectados,
+        num_embeddings_generados,
         error_ingesta: null
     }).eq('id', normaId);
 }
