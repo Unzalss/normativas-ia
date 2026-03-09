@@ -139,6 +139,11 @@ export default function SubirNormaPage() {
                 </div>
 
                 <div>
+                    <label style={{ display: 'block', fontWeight: 'bold' }}>Es versión de otra norma (opcional)</label>
+                    <input type="number" name="version_of" style={{ width: '100%', padding: '8px' }} placeholder="Opcional. ID de la norma padre" />
+                </div>
+
+                <div>
                     <label style={{ display: 'block', fontWeight: 'bold' }}>Fecha Publicación</label>
                     <input type="date" name="fecha_publicacion" style={{ width: '100%', padding: '8px' }} />
                 </div>
