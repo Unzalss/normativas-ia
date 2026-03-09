@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 export default function SubirNormaPage() {
-    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error' | 'duplicated' | 'duplicated_hash'>('idle');
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error' | 'duplicated' | 'duplicated_hash' | 'similar_warning'>('idle');
     const [result, setResult] = useState<any>(null);
+    const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+    const [similarMatches, setSimilarMatches] = useState<any[]>([]);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -13,13 +15,38 @@ export default function SubirNormaPage() {
         setResult(null);
 
         try {
-            const formData = new FormData(e.currentTarget);
+            const formData = e ? new FormData(e.currentTarget) : pendingFormData;
+            if (!formData) return;
 
             const file = formData.get("file") as File;
             if (!file || file.size === 0) {
                 throw new Error("Debes seleccionar un archivo.");
             }
 
+            // --- PASO 1: COMPROBACIÓN POSTERIOR DE NORMAS PARECIDAS ---
+            // Solo probamos si venimos de un FormEvent original (no de una confirmación de advertencia)
+            if (e && status !== 'similar_warning') {
+                const codigo = formData.get("codigo") as string;
+                const titulo = formData.get("titulo") as string;
+
+                const checkRes = await fetch('/api/check-similar-normas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codigo, titulo })
+                });
+
+                if (checkRes.ok) {
+                    const checkJson = await checkRes.json();
+                    if (checkJson.matches && checkJson.matches.length > 0) {
+                        setPendingFormData(formData);
+                        setSimilarMatches(checkJson.matches);
+                        setStatus('similar_warning');
+                        return; // Frenamos la subida para que el usuario decida
+                    }
+                }
+            }
+
+            // --- PASO 2: INGESTIÓN DEFINITIVA ---
             const supabase = createClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -68,6 +95,16 @@ export default function SubirNormaPage() {
             setStatus('error');
             setResult({ error: error.message });
         }
+    };
+
+    const handleConfirmUpload = () => {
+        handleSubmit(undefined as any); // Continuamos con el formData guardado en pendiente
+    };
+
+    const handleCancelUpload = () => {
+        setStatus('idle');
+        setPendingFormData(null);
+        setSimilarMatches([]);
     };
 
     return (
@@ -184,6 +221,44 @@ export default function SubirNormaPage() {
                             </pre>
                         </div>
                     </details>
+                </div>
+            )}
+
+            {/* CAJA DE ADVERTENCIA DE SIMILITUDES */}
+            {status === 'similar_warning' && similarMatches.length > 0 && (
+                <div style={{
+                    marginTop: '30px',
+                    padding: '24px',
+                    backgroundColor: '#fff7ed',
+                    border: '1px solid #fed7aa',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                }}>
+                    <h3 style={{ marginTop: '0', color: '#c2410c', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        ⚠️ Atención: Hemos encontrado normas muy parecidas
+                    </h3>
+                    <p style={{ color: '#9a3412', marginBottom: '16px', fontSize: '15px' }}>
+                        Antes de subir este documento, verifica si ya existe en la base de datos global analizando estos posibles solapamientos:
+                    </p>
+                    <ul style={{ paddingLeft: '20px', marginBottom: '24px', color: '#7c2d12', fontWeight: '500' }}>
+                        {similarMatches.map(match => (
+                            <li key={match.id} style={{ marginBottom: '8px' }}>
+                                <strong>{match.codigo}</strong> - {match.titulo}
+                            </li>
+                        ))}
+                    </ul>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button
+                            onClick={handleCancelUpload}
+                            style={{ padding: '10px 16px', backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleConfirmUpload}
+                            style={{ padding: '10px 16px', backgroundColor: '#c2410c', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                            Subir igualmente
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
