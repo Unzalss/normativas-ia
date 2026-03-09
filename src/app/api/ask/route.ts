@@ -90,9 +90,42 @@ export async function POST(req: Request) {
             }
         }
 
+        let detectedNormaCodigo = null;
+        let detectedNormaId = null;
+
+        // Detección automática de norma en la pregunta si no hay norma seleccionada
+        if (!parsedNormaId) {
+            const match = question.match(/\b(RD|RDL|Ley)\s*(\d{1,4}\/\d{4})\b/i);
+            if (match) {
+                const detectedCodigo = `${match[1].toUpperCase()} ${match[2]}`;
+
+                let normQuery = supabase
+                    .from("normas")
+                    .select("id, codigo, owner_user_id")
+                    .ilike("codigo", detectedCodigo)
+                    .limit(1);
+
+                if (userId) {
+                    normQuery = normQuery.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+                } else {
+                    normQuery = normQuery.is("owner_user_id", null);
+                }
+
+                const { data: detectedNorma } = await normQuery.maybeSingle();
+
+                if (detectedNorma) {
+                    parsedNormaId = detectedNorma.id;
+                    detectedNormaCodigo = detectedNorma.codigo;
+                    detectedNormaId = detectedNorma.id;
+                }
+            }
+        }
+
         const debugInfo: any = {
             normaCodigoRecibido: normaCodigo,
             normaIdResuelto: parsedNormaId,
+            detectedNormaCodigo,
+            detectedNormaId,
             rpcLlamado: "buscar_norma_partes",
             rowsLength: 0,
             rpcParamErrors: null
