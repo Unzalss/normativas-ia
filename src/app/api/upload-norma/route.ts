@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { extractTextFromUploadedFile, parseNormaJuridica } from '@/lib/normativas/parser';
 import { processNormaPipeline } from '@/lib/normativas/ingest';
@@ -44,6 +45,59 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Faltan campos obligatorios (file, titulo, codigo)" }, { status: 400 });
         }
 
+        // --- CÁLCULO DE HASH DEL ARCHIVO ---
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const document_hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+        // --- COMPROBACIÓN PREVIA DE DUPLICADOS POR CÓDIGO (Solo normas globales) ---
+        const { data: existingGlobalNorma, error: duplicateCheckError } = await supabase
+            .from('normas')
+            .select('id')
+            .eq('codigo', codigo)
+            .is('owner_user_id', null)
+            .limit(1)
+            .maybeSingle();
+
+        if (duplicateCheckError) {
+            return NextResponse.json(
+                { error: "Error de base de datos al comprobar duplicados por código." },
+                { status: 500 }
+            );
+        }
+
+        if (existingGlobalNorma) {
+            return NextResponse.json({
+                status: "duplicado",
+                message: "Ya existe una norma con ese código",
+                norma_id: existingGlobalNorma.id
+            }, { status: 409 });
+        }
+
+        // --- COMPROBACIÓN PREVIA DE DUPLICADOS POR HASH (Solo normas globales) ---
+        const { data: existingHashNorma, error: hashCheckError } = await supabase
+            .from('normas')
+            .select('id')
+            .eq('document_hash', document_hash)
+            .is('owner_user_id', null)
+            .limit(1)
+            .maybeSingle();
+
+        if (hashCheckError) {
+            return NextResponse.json(
+                { error: "Error de base de datos al comprobar el hash del documento." },
+                { status: 500 }
+            );
+        }
+
+        if (existingHashNorma) {
+            return NextResponse.json({
+                status: "duplicado_hash",
+                message: "Ya existe una norma con el mismo archivo",
+                norma_id: existingHashNorma.id
+            }, { status: 409 });
+        }
+
         const insertData = {
             titulo,
             codigo,
@@ -51,6 +105,7 @@ export async function POST(req: Request) {
             rango: rango || null,
             jurisdiccion: jurisdiccion || null,
             fecha_publicacion: fecha_publicacion || null,
+            document_hash,
             owner_user_id: null, // user.id (Cambiado a null por Auth desactivada)
             estado: 'vigente',
             estado_ingesta: 'procesando',

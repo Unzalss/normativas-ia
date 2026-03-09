@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 export default function SubirNormaPage() {
-    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error' | 'duplicated' | 'duplicated_hash'>('idle');
     const [result, setResult] = useState<any>(null);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -48,6 +48,16 @@ export default function SubirNormaPage() {
             const json = await res.json();
 
             if (!res.ok) {
+                if (res.status === 409 && json.status === "duplicado") {
+                    setStatus('duplicated');
+                    setResult(json);
+                    return;
+                }
+                if (res.status === 409 && json.status === "duplicado_hash") {
+                    setStatus('duplicated_hash');
+                    setResult(json);
+                    return;
+                }
                 throw new Error(json.error || "Error al subir la norma");
             }
 
@@ -111,11 +121,31 @@ export default function SubirNormaPage() {
             </form>
 
             {result && (
-                <div style={{ marginTop: '30px', padding: '15px', backgroundColor: status === 'error' ? '#ffe6e6' : '#e6ffe6', borderRadius: '5px' }}>
-                    <h3>Resultado ({status === 'success' ? 'Éxito' : 'Error'})</h3>
-                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                        {JSON.stringify(result, null, 2)}
-                    </pre>
+                <div style={{ marginTop: '30px', padding: '15px', backgroundColor: status === 'error' ? '#ffe6e6' : (status === 'duplicated' || status === 'duplicated_hash') ? '#fff3cd' : '#e6ffe6', borderRadius: '5px' }}>
+                    <h3 style={{ margin: '0 0 10px 0' }}>Resultado ({status === 'success' ? 'Éxito' : (status === 'duplicated' || status === 'duplicated_hash') ? 'Atención: Duplicado' : 'Error'})</h3>
+                    {status === 'duplicated' ? (
+                        <div>
+                            <p style={{ color: '#856404', fontWeight: 'bold' }}>
+                                Ya existe una norma con ese código. La ingestión no se ha ejecutado.
+                            </p>
+                            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '10px' }}>
+                                {JSON.stringify(result, null, 2)}
+                            </pre>
+                        </div>
+                    ) : status === 'duplicated_hash' ? (
+                        <div>
+                            <p style={{ color: '#856404', fontWeight: 'bold' }}>
+                                Ya existe una norma con el mismo archivo exacto. La ingestión no se ha ejecutado.
+                            </p>
+                            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '10px' }}>
+                                {JSON.stringify(result, null, 2)}
+                            </pre>
+                        </div>
+                    ) : (
+                        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                            {JSON.stringify(result, null, 2)}
+                        </pre>
+                    )}
                 </div>
             )}
         </div>

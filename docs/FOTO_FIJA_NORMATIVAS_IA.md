@@ -1,192 +1,544 @@
+docs/FOTO_FIJA_NORMATIVAS_IA.md
 # FOTO FIJA — PROYECTO NORMATIVAS IA
 
-## 1. Objetivo del proyecto
-- Buscador jurídico con IA sobre normativa.
-- Debe permitir consultar normas con recuperación de fragmentos jurídicos relevantes y responder con base en las normas cargadas.
-- Debe soportar normas globales y normas privadas por usuario.
+Última actualización: 2026-03-09  
+Estado: referencia oficial vigente del proyecto
 
-## 2. Stack actual (cerrado salvo petición expresa)
-- Frontend: Next.js
-- Backend/API: Next.js App Router
-- Base de datos: Supabase Postgres + pgvector
-- Auth: Supabase Auth
-- Despliegue: Vercel
-- Embeddings: text-embedding-3-small
-- LLM de respuesta: el actualmente usado en /api/ask
-- Desarrollo asistido: Antigravity se usa para aplicar cambios en el código
-- GitHub como repositorio
-- No usar scripts locales raros como sistema definitivo de ingestión
+Este documento describe el **estado real del proyecto Normativas IA**.  
+Debe usarse como **referencia principal cuando se abra una nueva conversación o ventana de trabajo**.
 
-## 3. Estado actual del buscador
-- El buscador jurídico ya funciona.
-- Si no hay evidencia suficiente, responde “No consta en las normas consultadas.”
-- Si hay evidencia, responde y muestra fuentes.
-- Ya se corrigió el problema por el que ciertos resultados válidos se descartaban por exigir article_number.
-- Ya se añadió detección y búsqueda directa para consultas de artículo concreto (“artículo 3”, “art. 10”, etc.), para no depender solo del embedding.
-- Ya funciona correctamente una búsqueda como: “qué dice el artículo 3 del real decreto 505/2007”.
-- La API principal actual está en:
-  - `src/app/api/ask/route.ts`
+Las nuevas tareas deben partir siempre de esta foto fija.
 
-## 4. Normas cargadas actualmente
-- Real Decreto 505/2007
-- Ordenanza Municipal de Protección Contra Incendios de Zaragoza
+---
 
-## 5. Problema histórico detectado
-- La subida de nuevas normas mediante scripts locales improvisados (Node, pdf-parse, .mjs/.cjs, Windows, Antigravity local, etc.) ha sido inestable.
-- Decisión cerrada:
-  - NO seguir usando scripts locales improvisados como sistema definitivo.
-  - La ingestión debe hacerse desde la propia web/app.
+# 1. Objetivo del proyecto
 
-## 6. Modelo de acceso a normas
-- La tabla normas ya soporta:
-  - normas globales
-  - normas privadas por usuario
-- Regla:
-  - `owner_user_id = NULL` → norma global
-  - `owner_user_id = UUID` → norma privada del usuario
-- `/api/ask` ya está adaptada para:
-  - usuario anónimo: solo normas globales
-  - usuario autenticado: normas globales + sus normas privadas
-  - nunca mostrar normas privadas de otros usuarios
+Construir un **buscador jurídico con IA orientado a normativa técnica**.
 
-## 7. Auth y perfiles
-- Supabase Auth está activado.
-- Existe la tabla `public.profiles`.
-- Se crea automáticamente un profile al crear un usuario.
-- Roles previstos:
-  - `admin`
-  - `user`
-- El role no debe poder modificarse libremente por el propio usuario.
+Usuarios objetivo:
 
-## 8. Estructura actual importante de tablas
+- arquitectos
+- ingenieros
+- técnicos de prevención
+- consultores
+- técnicos de administraciones públicas
 
-### Tabla normas
+El sistema debe permitir:
+
+- consultar normativa mediante lenguaje natural
+- recuperar fragmentos jurídicos relevantes
+- responder con base en normas cargadas
+- mostrar fuentes jurídicas exactas
+- filtrar resultados por norma concreta
+- soportar normas globales y privadas
+
+El proyecto está orientado a evolucionar hacia:
+
+**SaaS de normativa técnica con IA.**
+
+---
+
+# 2. Stack actual (cerrado salvo petición expresa)
+
+Frontend  
+- Next.js (App Router)
+
+Backend/API  
+- Next.js API Routes
+
+Base de datos  
+- Supabase Postgres
+
+Vector search  
+- pgvector
+
+Embeddings  
+- OpenAI `text-embedding-3-small`
+
+LLM de respuesta  
+- modelo actualmente usado en `/api/ask`
+
+Auth  
+- Supabase Auth
+
+Despliegue  
+- Vercel
+
+Repositorio  
+- GitHub
+
+Asistente de desarrollo  
+- Antigravity
+
+---
+
+# 3. Estado actual del buscador
+
+El buscador jurídico **ya funciona en producción**.
+
+Capacidades actuales:
+
+✔ búsqueda semántica vectorial  
+✔ búsqueda directa por artículo  
+✔ recuperación de fragmentos jurídicos  
+✔ generación de respuesta con RAG  
+✔ visualización de fuentes exactas  
+✔ filtro por norma seleccionada  
+✔ exclusión de fragmentos basura (`es_indice`)  
+✔ control de visibilidad por usuario  
+
+---
+
+# 4. Mejoras ya implementadas
+
+## Corrección de filtrado por artículo
+
+Antes el sistema descartaba resultados válidos si no existía `article_number`.
+
+Ahora acepta fragmentos válidos aunque no tengan número.
+
+---
+
+## Detección directa de artículos
+
+Ejemplo:
+
+
+qué dice el artículo 3 del RD 393/2007
+
+
+El sistema detecta automáticamente:
+
+
+artículo 3
+
+
+y prioriza ese fragmento.
+
+---
+
+## Mejora de contexto RAG
+
+Antes:
+
+
+3 fragmentos
+
+
+Ahora:
+
+
+12 fragmentos
+
+
+Código actual:
+
+
+validData.slice(0,12)
+
+
+---
+
+## Filtro real por norma seleccionada
+
+Antes el selector de norma no afectaba a la búsqueda.
+
+Ahora se aplica filtro:
+
+
+WHERE norma_id = X
+
+
+Esto evita mezclar normativa distinta.
+
+---
+
+# 5. Normas cargadas actualmente
+
+Actualmente existen 3 normas activas:
+
+| id | código | norma |
+|---|---|---|
+| 1 | RD 505/2007 | Real Decreto 505/2007 |
+| 2 | ZAR-PPCI | Ordenanza Municipal de Protección Contra Incendios de Zaragoza |
+| 7 | RD 393/2007 | Real Decreto 393/2007 |
+
+Fragmentos cargados:
+
+| norma_id | fragmentos |
+|---|---|
+| 1 | 62 |
+| 2 | 100 |
+| 7 | 96 |
+
+Las copias duplicadas fueron eliminadas.
+
+---
+
+# 6. Estructura de tablas
+
+## Tabla `normas`
+
 Columnas relevantes actuales:
-- id
-- titulo
-- codigo
-- ambito
-- rango
-- fecha_publicacion
-- estado
-- url_fuente
-- prioridad
-- jurisdiccion
-- fecha_vigencia
-- fecha_derogacion
-- jerarquia
-- owner_user_id
-- estado_ingesta
-- error_ingesta
-- nombre_archivo
-- mime_type
-- num_fragmentos
-- fecha_ingesta
 
-### Tabla normas_partes
+
+id
+titulo
+codigo
+ambito
+rango
+fecha_publicacion
+estado
+url_fuente
+prioridad
+jurisdiccion
+fecha_vigencia
+fecha_derogacion
+jerarquia
+owner_user_id
+estado_ingesta
+error_ingesta
+nombre_archivo
+mime_type
+num_fragmentos
+fecha_ingesta
+
+
+Regla de acceso:
+
+
+owner_user_id = NULL → norma global
+owner_user_id = UUID → norma privada
+
+
+---
+
+## Tabla `normas_partes`
+
+Fragmentos jurídicos de cada norma.
+
 Columnas relevantes actuales:
-- id
-- norma_id
-- tipo
-- seccion
-- numero
-- texto
-- orden
-- huella
-- embedding
-- articulo
-- rango
-- es_indice
-- jurisdiccion
-- norm_type
-- year
-- article_number
-- apartado
 
-## 9. Regla profesional de fragmentación jurídica
-La fragmentación correcta para nuevas normas debe seguir esta regla:
-1. Primero dividir por unidad jurídica real:
+
+id
+norma_id
+tipo
+seccion
+numero
+texto
+orden
+huella
+embedding
+articulo
+rango
+es_indice
+jurisdiccion
+norm_type
+year
+article_number
+apartado
+
+
+---
+
+# 7. Regla profesional de fragmentación jurídica
+
+Fragmentación actual:
+
+1. dividir por unidad jurídica real:
    - artículo
    - disposición adicional
    - disposición final
    - disposición transitoria
    - anexo
    - preámbulo
-   - capítulo solo si no hay artículos
-2. Si la unidad es corta, guardar una sola fila.
-3. Si un artículo es largo, dividirlo por apartados.
-4. No fragmentar arbitrariamente por bloques sin sentido jurídico.
-5. Marcar basura, índices o contenido no útil con `es_indice = true`.
 
-## 10. Estado actual de la ingestión desde web
-Ya existe base mínima de subida desde la web:
+2. si la unidad es corta → una fila
 
-### API creada
-- `src/app/api/upload-norma/route.ts`
+3. si el artículo es largo → dividir por apartados
 
-### Página creada
-- `src/app/subir-norma/page.tsx`
+4. evitar cortes arbitrarios
 
-### Qué hace ahora mismo
-- Permite subir un archivo y metadatos básicos.
-- Obtiene el token del usuario autenticado.
-- Envía POST a `/api/upload-norma`.
-- La API valida el usuario y crea una fila en `normas` con:
-  - owner_user_id
-  - estado = 'vigente'
-  - estado_ingesta = 'procesando'
-  - nombre_archivo
-  - mime_type
-  - fecha_ingesta
-- Devuelve JSON con el id de la norma creada.
+5. marcar contenido basura con `es_indice = true`
 
-### Qué NO hace todavía
-- No procesa todavía el PDF/TXT.
-- No extrae texto.
-- No divide en artículos.
-- No inserta en `normas_partes`.
-- No genera embeddings.
-- No marca todavía la norma como lista/error al terminar.
+---
 
-## 11. RPC importante actual
-La función clave del buscador es:
-- `buscar_norma_partes`
+# 8. Pipeline actual de ingestión
 
-Actualmente mezcla:
+Pipeline completo actual:
+
+
+PDF
+↓
+extractTextFromUploadedFile
+↓
+normalizeText
+↓
+parseNormaJuridica
+↓
+fragmentos jurídicos
+↓
+processNormaPipeline
+↓
+generación embeddings
+↓
+insert normas_partes
+↓
+estado_ingesta = lista
+
+
+---
+
+# 9. Subida de normas desde web
+
+Existe interfaz funcional.
+
+Página:
+
+
+/subir-norma
+
+
+Archivo:
+
+
+src/app/subir-norma/page.tsx
+
+
+API:
+
+
+src/app/api/upload-norma/route.ts
+
+
+---
+
+## Qué hace actualmente
+
+✔ subir PDF/TXT  
+✔ crear registro en `normas`  
+✔ extraer texto  
+✔ parsear estructura jurídica  
+✔ generar fragmentos  
+✔ generar embeddings  
+✔ insertar en `normas_partes`  
+✔ actualizar estado_ingesta  
+
+---
+
+# 10. Estados de ingestión
+
+Estados posibles:
+
+
+procesando
+lista
+error
+
+
+Campos relevantes:
+
+
+estado_ingesta
+error_ingesta
+num_fragmentos
+
+
+---
+
+# 11. RPC principal de búsqueda
+
+Función:
+
+
+buscar_norma_partes
+
+
+Responsabilidades:
+
 - vector search
 - lexical search
+- ranking híbrido
+- exclusión de índices
 - filtros de vigencia
-- exclusión de es_indice
 
-No rehacerla salvo necesidad real. La prioridad es mejorar la ingestión para alimentar bien esa RPC.
+Esta RPC **no debe rehacerse salvo necesidad real**.
 
-## 12. Cómo se está trabajando
-- Los cambios de código se piden a Antigravity.
-- Antes de cambios delicados, pedir diff o contenido exacto.
-- Después:
-  - `git add .`
-  - `git commit -m "..."`
-  - `git push`
-- Verificar despliegue en Vercel.
-- Ir paso a paso, sin mezclar muchas tareas en una sola respuesta.
-- Mantener estabilidad y evitar cambios innecesarios de stack o estrategia.
+---
 
-## 13. Reglas cerradas del proyecto
-- No cambiar de stack sin petición expresa.
-- No volver a proponer scripts locales improvisados como solución principal de ingestión.
-- La ingestión profesional definitiva debe vivir en la web/app.
-- La prioridad es robustez y repetibilidad, no hacks rápidos.
-- Para jurídico, preferir precisión estructural antes que atajos.
+# 12. Modelo actual de acceso a normas
 
-## 14. Próximo objetivo inmediato
-Completar la ingestión profesional desde la web:
-1. aceptar PDF/TXT
-2. extraer texto
-3. dividir por unidades jurídicas correctas
-4. insertar en normas_partes
-5. generar embeddings
-6. actualizar estado_ingesta a 'lista' o 'error'
-7. dejar el flujo estable para futuras normas sin scripts locales
+Usuario anónimo:
 
-## 15. Nota de continuidad para futuras ventanas
-Cuando se abra una nueva conversación o se cambie de ventana, este archivo debe servir como referencia principal del estado del proyecto. Cualquier nueva tarea debe partir de esta foto fija salvo que se indique expresamente un cambio.
+
+solo normas globales
+
+
+Usuario autenticado:
+
+
+normas globales + normas propias
+
+
+Nunca mostrar:
+
+
+normas privadas de otros usuarios
+
+
+---
+
+# 13. Flujo actual de desarrollo
+
+Regla de trabajo:
+
+1. pedir cambios a Antigravity
+2. revisar diff
+3. aplicar cambios
+4. ejecutar:
+
+
+git add .
+git commit -m "..."
+git push
+
+
+5. Vercel despliega automáticamente
+6. probar en producción
+
+---
+
+# 14. Decisiones cerradas del proyecto
+
+Estas decisiones **no deben reabrirse salvo motivo técnico grave**.
+
+- El stack actual queda fijado.
+- La ingestión debe vivir en web/app.
+- No usar scripts locales improvisados.
+- La RPC `buscar_norma_partes` no debe rehacerse.
+- El motor RAG actual es válido.
+- Antigravity se usa para modificar el repositorio.
+
+---
+
+# 15. Problemas históricos ya resueltos
+
+✔ errores de `pdf-parse`  
+✔ colisiones de embeddings  
+✔ columna `jurisdiccion` incorrecta  
+✔ errores de tipo en `numero`  
+✔ normas duplicadas  
+✔ selector de norma no filtraba  
+✔ contexto RAG demasiado pequeño  
+
+---
+
+# 16. Problemas conocidos aún pendientes
+
+1. control de duplicados de normas  
+2. sistema de versiones de normas  
+3. validación automática de ingestión  
+4. revisión manual de ingestión  
+5. visibilidad avanzada de normas  
+6. división avanzada de artículos  
+7. subida automática desde BOE  
+
+---
+
+# 17. Próxima fase de desarrollo (prioridad absoluta)
+
+Implementar **INGESTIÓN PROFESIONAL CONTROLADA**.
+
+Objetivos:
+
+### 1. Control de duplicados
+
+Detectar normas existentes mediante:
+
+- `codigo`
+- hash del documento
+
+Opciones al detectar duplicado:
+
+- cancelar
+- reemplazar
+- crear nueva versión
+
+---
+
+### 2. Sistema de versiones de normas
+
+Añadir campos:
+
+
+version_of
+estado_vigencia
+fecha_vigencia
+fecha_derogacion
+
+
+Solo normas vigentes se consultan por defecto.
+
+---
+
+### 3. Validación automática de ingestión
+
+Cada norma debe generar informe:
+
+
+fragmentos generados
+artículos detectados
+anexos detectados
+embeddings generados
+errores detectados
+
+
+---
+
+### 4. Revisión manual de ingestión
+
+Estados futuros:
+
+
+procesando
+pendiente_revision
+lista
+error
+
+
+---
+
+### 5. Preparar subida automática desde BOE
+
+Cuando la ingestión controlada sea estable:
+
+Pipeline:
+
+
+URL BOE
+↓
+descarga PDF
+↓
+ingestión automática
+↓
+validación
+
+
+---
+
+# 18. Regla de continuidad
+
+Cuando se abra una nueva conversación:
+
+1. pegar este documento
+2. tomarlo como estado real del proyecto
+3. no replantear decisiones cerradas
+4. avanzar solo en la siguiente prioridad
+
+
+INGESTIÓN PROFESIONAL CONTROLADA
+
+
+---
+
+# FIN DE FOTO FIJA
