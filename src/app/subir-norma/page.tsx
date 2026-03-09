@@ -3,11 +3,6 @@
 import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 export default function SubirNormaPage() {
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [result, setResult] = useState<any>(null);
@@ -25,18 +20,28 @@ export default function SubirNormaPage() {
                 throw new Error("Debes seleccionar un archivo.");
             }
 
+            const supabase = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            );
+
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
+            /* --- AUTH DESACTIVADA TEMPORALMENTE ---
             if (!token) {
                 throw new Error("No estás autenticado. Debes iniciar sesión primero.");
+            }
+            */
+
+            const headers: Record<string, string> = {};
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
             }
 
             const res = await fetch('/api/upload-norma', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
+                headers,
                 body: formData,
             });
 
@@ -87,8 +92,13 @@ export default function SubirNormaPage() {
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontWeight: 'bold' }}>Archivo PDF *</label>
-                    <input type="file" name="file" accept="application/pdf" required style={{ width: '100%', padding: '8px' }} />
+                    <label style={{ display: 'block', fontWeight: 'bold' }}>Fecha Publicación</label>
+                    <input type="date" name="fecha_publicacion" style={{ width: '100%', padding: '8px' }} />
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', fontWeight: 'bold' }}>Archivo PDF o TXT *</label>
+                    <input type="file" name="file" accept="application/pdf, text/plain" required style={{ width: '100%', padding: '8px' }} />
                 </div>
 
                 <button
