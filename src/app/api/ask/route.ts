@@ -12,7 +12,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
     try {
         const xDebug = req.headers.get("x-debug") === "1";
-        const { question, normaId, normaCodigo = null, k = 12 } = await req.json();
+        const payload = await req.json();
+        const { question, normaId, norma_id, normaCodigo = null, k = 12 } = payload;
+        const incomingNormaId = norma_id !== undefined ? norma_id : normaId;
 
         if (!question) {
             return NextResponse.json({ error: "Falta question" }, { status: 400 });
@@ -68,8 +70,8 @@ export async function POST(req: Request) {
             }
 
             parsedNormaId = normaRow.id;
-        } else if (normaId !== null && normaId !== undefined && normaId !== "" && String(normaId) !== "all") {
-            const num = Number(normaId);
+        } else if (incomingNormaId !== null && incomingNormaId !== undefined && incomingNormaId !== "" && String(incomingNormaId) !== "all") {
+            const num = Number(incomingNormaId);
             if (!isNaN(num)) {
                 parsedNormaId = num;
 
@@ -120,84 +122,50 @@ export async function POST(req: Request) {
             return 0;
         };
 
-        const busquedaGlobal = async (qEmbedding: number[], allowedIds: number[]) => {
-            if (allowedIds.length === 0) return [];
+        // Vector Search parameters
+        // Ya resuelto arriba como incomingNormaId, y parseado seguro.
 
-            const { data: normas } = await supabase
-                .from("normas")
-                .select("id,codigo")
-                .in("id", allowedIds)
-                .limit(MAX_NORMAS);
-            if (!normas || normas.length === 0) return [];
-            console.log(`[GLOBAL] Buscando en ${normas.length} normas...`);
+        // --- 1. VECTOR SEARCH ---
+        console.log(`[VECTOR SEARCH] Ejecutando búsqueda vectorial. Filtro norma: ${parsedNormaId || 'TODAS'}`);
 
-            const promises = normas.map(norma =>
-                supabase.rpc("buscar_norma_partes", {
-                    q_embedding: qEmbedding,
-                    q_norma_id: norma.id,
-                    k: K_PER_NORMA
-                }).then(res => res.data || [])
-            );
+        let rpcQuery = supabase.rpc("buscar_norma_partes", {
+            q_embedding,
+            q_norma_id: parsedNormaId || null,
+            k: parsedNormaId ? k : K_GLOBAL
+        });
 
-            const resultsArray = await Promise.all(promises);
-            const flatResults = resultsArray.flat();
-
-            const deduplicated = new Map();
-            for (const row of flatResults) {
-                const key = row.parte_id || row.id;
-                if (!deduplicated.has(key)) {
-                    deduplicated.set(key, row);
-                }
-            }
-
-            const sorted = Array.from(deduplicated.values()).sort((a, b) => getScore(b) - getScore(a));
-            return sorted.slice(0, K_GLOBAL);
-        };
-
-        let rawData: any[] = [];
-
+        // Aplicamos el filtro en la consulta pgvector si el usuario selecciona una norma
         if (parsedNormaId) {
-            console.log(`[NORMA] Búsqueda en norma ${parsedNormaId}`);
-            // First attempt with requested k
-            // The RPC "buscar_norma_partes" accepts: q_embedding, q_norma_id, k.
-            const rpcPayload = {
-                q_embedding,
-                q_norma_id: parsedNormaId,
-                k
-            };
-
-            const { data, error } = await supabase.rpc("buscar_norma_partes", rpcPayload);
-
-            console.log("--- Búsqueda en Supabase 1 ---");
-            console.log(`norma_id: ${parsedNormaId}, limit(k): ${k}`);
-            if (error) {
-                console.error("Error RPC 1:", error.message, error.details);
-                debugInfo.rpcParamErrors = error;
-                return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
-            }
-
-            rawData = data || [];
-            debugInfo.rowsLength = rawData.length;
-            console.log(`Filas devueltas 1: ${rawData.length}`);
+            rpcQuery = rpcQuery.eq("norma_id", parsedNormaId);
         } else {
-            console.log(`[GLOBAL] Iniciando búsqueda global...`);
-
+            // BÚSQUEDA GLOBAL: Prevenir fuga de datos (normas privadas de otros)
             let allowedNormaIds: number[] = [];
-            let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
-
+            let normQuery = supabase.from("normas").select("id").limit(MAX_NORMAS);
             if (userId) {
-                query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+                normQuery = normQuery.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
             } else {
-                query = query.is("owner_user_id", null);
+                normQuery = normQuery.is("owner_user_id", null);
             }
-
-            const { data: ns } = await query;
-            if (ns) allowedNormaIds = ns.map(n => n.id);
-
-            rawData = await busquedaGlobal(q_embedding, allowedNormaIds);
-            debugInfo.rowsLength = rawData.length;
-            console.log(`Filas devueltas (Global al final): ${rawData.length}`);
+            const { data: ns } = await normQuery;
+            if (ns && ns.length > 0) {
+                allowedNormaIds = ns.map(n => n.id);
+                rpcQuery = rpcQuery.in("norma_id", allowedNormaIds);
+            } else {
+                rpcQuery = rpcQuery.eq("norma_id", -1); // Forzar vacío si no hay normas permitidas
+            }
         }
+
+        const { data, error } = await rpcQuery;
+
+        if (error) {
+            console.error("Error RPC vectorial:", error.message, error.details);
+            debugInfo.rpcParamErrors = error;
+            return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
+        }
+
+        let rawData = data || [];
+        debugInfo.rowsLength = rawData.length;
+        console.log(`Filas vectoriales devueltas: ${rawData.length}`);
 
         if (rawData && rawData.length > 0) {
             console.log("DEBUG rawData[0]:", rawData[0]);
@@ -210,11 +178,14 @@ export async function POST(req: Request) {
             const kRetry = k * 3;
             debugInfo.limitRetry = kRetry;
 
-            const { data: retryData, error: retryError } = await supabase.rpc("buscar_norma_partes", {
+            // Reintento también con el eq explícito dictado
+            let retryQuery = supabase.rpc("buscar_norma_partes", {
                 q_embedding,
                 q_norma_id: parsedNormaId,
                 k: kRetry
-            });
+            }).eq("norma_id", parsedNormaId);
+
+            const { data: retryData, error: retryError } = await retryQuery;
 
             console.log("--- Búsqueda en Supabase 2 (Retry) ---");
             console.log(`norma_id: ${parsedNormaId}, limit(kRetry): ${kRetry}`);
