@@ -16,7 +16,7 @@ export async function extractTextFromUploadedFile(file: Blob | any, fileName: st
         const buffer = Buffer.from(arrayBuffer);
         // Import dinámico para Next.js
         // @ts-expect-error - no types available for pdf-parse
-        const pdfParseModule = await import('pdf-parse');
+        const pdfParseModule = await import('pdf-parse/lib/pdf-parse.js');
         const pdfParse = pdfParseModule.default || pdfParseModule;
         const data = await pdfParse(buffer);
         text = normalizeText(data.text);
