@@ -74,8 +74,9 @@ export async function processNormaPipeline(
                 num_embeddings_generados++;
             }
 
-            if (frag.tipo === 'articulo') num_articulos_detectados++;
-            if (frag.tipo === 'anexo') num_anexos_detectados++;
+            const tipo = (frag.tipo || "").toLowerCase();
+            if (tipo.includes("art")) num_articulos_detectados++;
+            if (tipo.includes("anex")) num_anexos_detectados++;
 
             return {
                 norma_id: normaId,
