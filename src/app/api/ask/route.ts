@@ -121,11 +121,40 @@ export async function POST(req: Request) {
             }
         }
 
+        let detectedMateria = null;
+        let detectedNormaPorMateria = null;
+        let detectedNormaIdPorMateria = null;
+
+        // Detección automática por materia si no hay norma preseleccionada ni detectada
+        if (!parsedNormaId) {
+            const questionLower = question.toLowerCase();
+            const energyKeywords = ["energética", "energético", "certificación energética", "certificado energético", "eficiencia energética"];
+
+            if (energyKeywords.some(kw => questionLower.includes(kw))) {
+                const { data: normaMateria } = await supabase
+                    .from("normas")
+                    .select("id, codigo")
+                    .eq("codigo", "RD 390/2021")
+                    .limit(1)
+                    .maybeSingle();
+
+                if (normaMateria) {
+                    parsedNormaId = normaMateria.id;
+                    detectedMateria = "energia";
+                    detectedNormaPorMateria = "RD 390/2021";
+                    detectedNormaIdPorMateria = normaMateria.id;
+                }
+            }
+        }
+
         const debugInfo: any = {
             normaCodigoRecibido: normaCodigo,
             normaIdResuelto: parsedNormaId,
             detectedNormaCodigo,
             detectedNormaId,
+            detectedMateria,
+            detectedNormaPorMateria,
+            detectedNormaIdPorMateria,
             rpcLlamado: "buscar_norma_partes",
             rowsLength: 0,
             rpcParamErrors: null
