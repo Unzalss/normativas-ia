@@ -82,7 +82,7 @@ export async function processNormaPipeline(
                 articulo: frag.articulo,
                 rango: metadata.rango,
                 es_indice: frag.es_indice,
-                jurisdiccion: metadata.jurisdiccion,
+                jurisdiction: metadata.jurisdiccion,
                 norm_type: calculatedNormType,
                 year: calculatedYear,
                 article_number: frag.article_number,
