@@ -22,6 +22,7 @@ export async function POST(req: Request) {
         const rango = formData.get("rango") as string | null;
         const jurisdiccion = formData.get("jurisdiccion") as string | null;
         const fecha_publicacion = formData.get("fecha_publicacion") as string | null;
+        const version_of = formData.get("version_of") as string | null;
 
         if (!file || !titulo || !codigo) {
             return NextResponse.json({ error: "Faltan campos obligatorios (file, titulo, codigo)" }, { status: 400 });
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
             jurisdiccion: jurisdiccion || null,
             fecha_publicacion: fecha_publicacion || null,
             document_hash,
+            version_of: version_of || null,
             owner_user_id: null,
             estado: 'vigente',
             estado_ingesta: 'procesando',
