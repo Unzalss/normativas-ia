@@ -121,31 +121,69 @@ export default function SubirNormaPage() {
             </form>
 
             {result && (
-                <div style={{ marginTop: '30px', padding: '15px', backgroundColor: status === 'error' ? '#ffe6e6' : (status === 'duplicated' || status === 'duplicated_hash') ? '#fff3cd' : '#e6ffe6', borderRadius: '5px' }}>
-                    <h3 style={{ margin: '0 0 10px 0' }}>Resultado ({status === 'success' ? 'Éxito' : (status === 'duplicated' || status === 'duplicated_hash') ? 'Atención: Duplicado' : 'Error'})</h3>
-                    {status === 'duplicated' ? (
-                        <div>
-                            <p style={{ color: '#856404', fontWeight: 'bold' }}>
-                                Ya existe una norma con ese código. La ingestión no se ha ejecutado.
-                            </p>
-                            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '10px' }}>
+                <div style={{
+                    marginTop: '30px',
+                    padding: '24px',
+                    backgroundColor: status === 'error' ? '#fef2f2' : (status === 'duplicated' || status === 'duplicated_hash') ? '#fffbeb' : '#f0fdf4',
+                    border: '1px solid',
+                    borderColor: status === 'error' ? '#fecaca' : (status === 'duplicated' || status === 'duplicated_hash') ? '#fde68a' : '#bbf7d0',
+                    borderRadius: '8px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                }}>
+                    <h3 style={{
+                        marginTop: '0',
+                        marginBottom: '8px',
+                        fontSize: '18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        color: status === 'error' ? '#991b1b' : (status === 'duplicated' || status === 'duplicated_hash') ? '#92400e' : '#166534'
+                    }}>
+                        {status === 'success' ? '✅ Ingestión Completada' :
+                            status === 'error' ? '❌ Error en la Subida' :
+                                '⚠️ Atención: Documento Duplicado'}
+                    </h3>
+
+                    <p style={{
+                        margin: '0 0 16px 0',
+                        fontSize: '15px',
+                        lineHeight: '1.5',
+                        color: status === 'error' ? '#7f1d1d' : (status === 'duplicated' || status === 'duplicated_hash') ? '#78350f' : '#14532d',
+                        fontWeight: '500'
+                    }}>
+                        {status === 'success' && 'La norma ha sido registrada, fragmentada y vectorizada correctamente.'}
+                        {status === 'error' && 'Ha ocurrido un problema durante el procesamiento de la norma.'}
+                        {status === 'duplicated' && 'Ya existe una norma global con ese código. La ingestión no se ha ejecutado para evitar colisiones.'}
+                        {status === 'duplicated_hash' && 'Ya existe una norma global cargada con el mismo archivo exacto. La ingestión temporal no se ha ejecutado.'}
+                    </p>
+
+                    <details style={{ marginTop: '16px' }}>
+                        <summary style={{
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            color: '#6b7280',
+                            fontWeight: '600',
+                            userSelect: 'none'
+                        }}>
+                            Ver respuesta técnica detallada
+                        </summary>
+                        <div style={{ marginTop: '12px' }}>
+                            <pre style={{
+                                margin: 0,
+                                padding: '16px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                                border: '1px solid rgba(0, 0, 0, 0.05)',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: '#374151',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-all',
+                                overflowX: 'auto'
+                            }}>
                                 {JSON.stringify(result, null, 2)}
                             </pre>
                         </div>
-                    ) : status === 'duplicated_hash' ? (
-                        <div>
-                            <p style={{ color: '#856404', fontWeight: 'bold' }}>
-                                Ya existe una norma con el mismo archivo exacto. La ingestión no se ha ejecutado.
-                            </p>
-                            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: '10px' }}>
-                                {JSON.stringify(result, null, 2)}
-                            </pre>
-                        </div>
-                    ) : (
-                        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                            {JSON.stringify(result, null, 2)}
-                        </pre>
-                    )}
+                    </details>
                 </div>
             )}
         </div>
