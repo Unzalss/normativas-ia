@@ -225,24 +225,29 @@ function extractMetadataFromTitle(title: string) {
     const res = { tipo: null as string | null, numero: null as string | null, article_number: null as number | null };
     const tLower = title.toLowerCase();
 
+    // Función de ayuda para extraer solo enteros válidos o anular a null
+    const safeNumericCast = (rawText: string): string | null => {
+        const numMatch = rawText.match(/\d+/);
+        return numMatch ? numMatch[0] : null;
+    };
+
     if (tLower.startsWith('art') || tLower.startsWith('art.')) {
         res.tipo = 'Artículo';
-        const numMatch = title.match(/\d+/);
-        if (numMatch) {
-            res.numero = numMatch[0];
-            res.article_number = parseInt(numMatch[0]);
-        } else {
-            res.numero = title.replace(/art(?:í|i)culo\s+/i, '').trim() || null;
-        }
+        const rawNum = title.replace(/art(?:í|i)culo\s+/i, '').replace(/art\.\s*/i, '').trim();
+        res.numero = safeNumericCast(rawNum);
+        res.article_number = res.numero ? parseInt(res.numero) : null;
     } else if (tLower.includes('disposición')) {
         res.tipo = 'Disposición';
-        res.numero = title.replace(/disposición\s+\w+\s+/i, '').trim() || null;
+        const rawNum = title.replace(/disposición\s+\w+\s+/i, '').trim();
+        res.numero = safeNumericCast(rawNum);
     } else if (tLower.startsWith('anexo')) {
         res.tipo = 'Anexo';
-        res.numero = title.replace(/anexo\s+/i, '').trim() || null;
+        const rawNum = title.replace(/anexo\s+/i, '').trim();
+        res.numero = safeNumericCast(rawNum);
     } else if (tLower.startsWith('capítulo')) {
         res.tipo = 'Capítulo';
-        res.numero = title.replace(/capítulo\s+/i, '').trim() || null;
+        const rawNum = title.replace(/capítulo\s+/i, '').trim();
+        res.numero = safeNumericCast(rawNum);
     }
 
     return res;
