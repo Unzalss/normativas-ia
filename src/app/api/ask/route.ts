@@ -514,7 +514,7 @@ export async function POST(req: Request) {
 
         if (!isLiteralMatch) {
             try {
-                const context = validData.slice(0, 3).map((x: any, i: number) => {
+                const context = validData.slice(0, 12).map((x: any, i: number) => {
                     let header = x.seccion || 'Fragmento';
                     if (x.articulo_detectado) {
                         header += ` (articulo_detectado: ${x.articulo_detectado})`;
