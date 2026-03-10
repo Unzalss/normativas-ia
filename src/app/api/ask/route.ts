@@ -186,6 +186,28 @@ export async function POST(req: Request) {
                             detectedNormaPorMateria = "RD 505/2007";
                             detectedNormaIdPorMateria = normaMateria.id;
                         }
+                    } else {
+                        const urbanKeywords = [
+                            "urbanismo", "suelo", "ley del suelo", "régimen urbanístico",
+                            "clasificación del suelo", "uso del suelo", "actuaciones urbanísticas",
+                            "propiedad del suelo", "valor del suelo"
+                        ];
+
+                        if (urbanKeywords.some(kw => questionLower.includes(kw))) {
+                            const { data: normaMateria } = await supabase
+                                .from("normas")
+                                .select("id, codigo")
+                                .eq("codigo", "RDL 8/2015")
+                                .limit(1)
+                                .maybeSingle();
+
+                            if (normaMateria) {
+                                parsedNormaId = normaMateria.id;
+                                detectedMateria = "urbanismo";
+                                detectedNormaPorMateria = "RDL 8/2015";
+                                detectedNormaIdPorMateria = normaMateria.id;
+                            }
+                        }
                     }
                 }
             }
