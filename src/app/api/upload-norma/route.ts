@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
 import { extractTextFromUploadedFile, parseNormaJuridica } from '@/lib/normativas/parser';
 import { processNormaPipeline } from '@/lib/normativas/ingest';
 
@@ -23,6 +24,8 @@ export async function POST(req: Request) {
         const jurisdiccion = formData.get("jurisdiccion") as string | null;
         const fecha_publicacion = formData.get("fecha_publicacion") as string | null;
         const version_of = formData.get("version_of") as string | null;
+        const materia = formData.get("materia") as string | null;
+        const submateria = formData.get("submateria") as string | null;
 
         if (!file || !titulo || !codigo) {
             return NextResponse.json({ error: "Faltan campos obligatorios (file, titulo, codigo)" }, { status: 400 });
@@ -88,6 +91,8 @@ export async function POST(req: Request) {
             rango: rango || null,
             jurisdiccion: jurisdiccion || null,
             fecha_publicacion: fecha_publicacion || null,
+            materia: materia || null,
+            submateria: submateria || null,
             document_hash,
             version_of: version_of || null,
             owner_user_id: null,
@@ -131,17 +136,61 @@ export async function POST(req: Request) {
                 if (matchFecha) detectedFecha = matchFecha[0];
             }
 
-            if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion)) {
+            let detectedMateria = materia;
+            let detectedSubmateria = submateria;
+
+            if (!detectedMateria || !detectedSubmateria) {
+                try {
+                    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                    const classificationPrompt = `CLASIFICA ESTA NORMA TÉCNICA.
+
+Devuelve JSON con:
+materia
+submateria
+
+Materias posibles:
+- incendios
+- accesibilidad
+- energía
+- urbanismo
+- prevención
+- seguridad industrial
+- medio ambiente
+- otros`;
+                    
+                    const completion = await openai.chat.completions.create({
+                        model: "gpt-4o-mini",
+                        messages: [
+                            { role: "system", content: classificationPrompt },
+                            { role: "user", content: `TÍTULO: ${titulo}\n\nTEXTO INTRODUCTORIO:\n${textIntro}` }
+                        ],
+                        response_format: { type: "json_object" },
+                        temperature: 0,
+                    });
+                    
+                    const result = JSON.parse(completion.choices[0].message.content || "{}");
+                    if (!detectedMateria && result.materia) detectedMateria = String(result.materia).toLowerCase();
+                    if (!detectedSubmateria && result.submateria) detectedSubmateria = String(result.submateria).toLowerCase();
+                } catch (e) {
+                    console.error("Error en clasificación IA:", e);
+                }
+            }
+
+            if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion) || (detectedMateria && !materia) || (detectedSubmateria && !submateria)) {
                 await supabase.from('normas').update({
                     rango: detectedRango || null,
-                    fecha_publicacion: detectedFecha || null
+                    fecha_publicacion: detectedFecha || null,
+                    materia: detectedMateria || null,
+                    submateria: detectedSubmateria || null
                 }).eq('id', insertedNorma.id);
             }
 
             const metadataProxy = {
                 titulo, codigo, ambito, jurisdiccion,
                 rango: detectedRango || null,
-                fecha_publicacion: detectedFecha || undefined
+                fecha_publicacion: detectedFecha || undefined,
+                materia: detectedMateria || undefined,
+                submateria: detectedSubmateria || undefined
             };
             const fragments = parseNormaJuridica(rawText, metadataProxy);
 
