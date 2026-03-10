@@ -161,27 +161,44 @@ export async function POST(req: Request) {
             }
 
             if (!matchedEnergy) {
-                const fireKeywords = ["incendios", "protección contra incendios", "pci", "evacuación", "sectorización"];
-                const hasFireKeyword = fireKeywords.some(kw => {
-                    if (kw === "pci") return /\bpci\b/i.test(questionLower);
-                    return questionLower.includes(kw);
-                });
+                // 2. Incendios (Dinámico vía metadata DB)
+                const { data: normaIncendios } = await supabase
+                    .from("normas")
+                    .select("id, codigo, materia, submateria, keywords")
+                    .eq("codigo", "ZAR-PPCI")
+                    .limit(1)
+                    .maybeSingle();
 
-                if (hasFireKeyword) {
-                    const { data: normaMateria } = await supabase
-                        .from("normas")
-                        .select("id, codigo")
-                        .eq("codigo", "ZAR-PPCI")
-                        .limit(1)
-                        .maybeSingle();
-
-                    if (normaMateria) {
-                        parsedNormaId = normaMateria.id;
-                        detectedMateria = "incendios";
-                        detectedNormaPorMateria = "ZAR-PPCI";
-                        detectedNormaIdPorMateria = normaMateria.id;
+                let matchedFire = false;
+                if (normaIncendios) {
+                    let keywordsArray: string[] = [];
+                    if (typeof normaIncendios.keywords === "string") {
+                        keywordsArray = normaIncendios.keywords.split(",");
+                    } else if (Array.isArray(normaIncendios.keywords)) {
+                        keywordsArray = normaIncendios.keywords;
                     }
-                } else {
+
+                    const fireTermsToMatch = [
+                        normaIncendios.materia,
+                        normaIncendios.submateria,
+                        ...keywordsArray
+                    ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
+
+                    const hasFireKeyword = fireTermsToMatch.some(kw => {
+                        if (kw === "pci") return /\bpci\b/i.test(questionLower);
+                        return questionLower.includes(kw);
+                    });
+
+                    if (hasFireKeyword) {
+                        parsedNormaId = normaIncendios.id;
+                        detectedMateria = normaIncendios.materia || "incendios";
+                        detectedNormaPorMateria = "ZAR-PPCI";
+                        detectedNormaIdPorMateria = normaIncendios.id;
+                        matchedFire = true;
+                    }
+                }
+
+                if (!matchedFire) {
                     const accessibilityKeywords = [
                         "accesibilidad", "accesible", "barreras arquitectónicas",
                         "eliminación de barreras", "itinerario accesible",
