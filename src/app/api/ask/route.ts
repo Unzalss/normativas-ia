@@ -583,7 +583,16 @@ export async function POST(req: Request) {
                 const completion = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     messages: [
-                        { role: "system", content: "Eres un asistente técnico-jurídico. Responde únicamente usando la información del contexto. Si la respuesta no aparece en el contexto, indícalo. Cuando respondas debes citar el artículo usando el formato [Artículo X] si aparece en el contexto. No inventar artículos. Si el contexto contiene un fragmento con articulo_detectado, usar esa referencia." },
+                        {
+                            role: "system",
+                            content: `Eres un asistente jurídico especializado en normativa técnica.
+Reglas obligatorias:
+1. Responde SOLO con base en los fragmentos jurídicos proporcionados, sin inventar información ni usar conocimiento externo.
+2. Si la respuesta no está en los fragmentos, responde exactamente: "No consta en las normas consultadas."
+3. Si citas una norma, extrae o indica el artículo correspondiente (p.ej. [Artículo X]).
+4. Explica la respuesta de forma clara, sintetizando sin inventar contenido extra, y evitando interpretaciones jurídicas amplias.
+5. No mezcles normas que no figuren en los fragmentos recuperados.`
+                        },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` }
                     ],
                     max_tokens: 300, // Limit to ~1200 chars roughly
