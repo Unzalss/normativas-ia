@@ -26,6 +26,7 @@ export async function POST(req: Request) {
         const version_of = formData.get("version_of") as string | null;
         const materia = formData.get("materia") as string | null;
         const submateria = formData.get("submateria") as string | null;
+        const keywords = formData.get("keywords") as string | null;
 
         if (!file || !titulo || !codigo) {
             return NextResponse.json({ error: "Faltan campos obligatorios (file, titulo, codigo)" }, { status: 400 });
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
             fecha_publicacion: fecha_publicacion || null,
             materia: materia || null,
             submateria: submateria || null,
+            keywords: keywords || null,
             document_hash,
             version_of: version_of || null,
             owner_user_id: null,
@@ -157,7 +159,7 @@ Materias posibles:
 - seguridad industrial
 - medio ambiente
 - otros`;
-                    
+
                     const completion = await openai.chat.completions.create({
                         model: "gpt-4o-mini",
                         messages: [
@@ -167,7 +169,7 @@ Materias posibles:
                         response_format: { type: "json_object" },
                         temperature: 0,
                     });
-                    
+
                     const result = JSON.parse(completion.choices[0].message.content || "{}");
                     if (!detectedMateria && result.materia) detectedMateria = String(result.materia).toLowerCase();
                     if (!detectedSubmateria && result.submateria) detectedSubmateria = String(result.submateria).toLowerCase();
@@ -176,12 +178,28 @@ Materias posibles:
                 }
             }
 
-            if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion) || (detectedMateria && !materia) || (detectedSubmateria && !submateria)) {
+            let detectedKeywords = keywords;
+            if (!detectedKeywords) {
+                const generatedKeywords = [
+                    detectedMateria,
+                    detectedSubmateria,
+                    ...(titulo ? titulo.toLowerCase().split(/[\s,.;:!?()¿¡'"\-]+/).filter(w => w.length > 4) : [])
+                ].filter(Boolean);
+
+                // Supabase is expecting a string[] for keywords? Wait, FOTO FIJA says: `keywords` (TEXT[])
+                // We'll pass it as a JS array and the Supabase client will handle the PgArray serialization.
+                if (generatedKeywords.length > 0) {
+                    detectedKeywords = Array.from(new Set(generatedKeywords)) as any;
+                }
+            }
+
+            if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion) || (detectedMateria && !materia) || (detectedSubmateria && !submateria) || (detectedKeywords && !keywords)) {
                 await supabase.from('normas').update({
                     rango: detectedRango || null,
                     fecha_publicacion: detectedFecha || null,
                     materia: detectedMateria || null,
-                    submateria: detectedSubmateria || null
+                    submateria: detectedSubmateria || null,
+                    keywords: detectedKeywords || null
                 }).eq('id', insertedNorma.id);
             }
 
@@ -190,7 +208,8 @@ Materias posibles:
                 rango: detectedRango || null,
                 fecha_publicacion: detectedFecha || undefined,
                 materia: detectedMateria || undefined,
-                submateria: detectedSubmateria || undefined
+                submateria: detectedSubmateria || undefined,
+                keywords: detectedKeywords || undefined
             };
             const fragments = parseNormaJuridica(rawText, metadataProxy);
 
