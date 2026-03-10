@@ -128,23 +128,39 @@ export async function POST(req: Request) {
         // Detección automática por materia si no hay norma preseleccionada ni detectada
         if (!parsedNormaId) {
             const questionLower = question.toLowerCase();
-            const energyKeywords = ["energética", "energético", "certificación energética", "certificado energético", "eficiencia energética"];
+            // 1. Energía (Dinámico vía metadata DB)
+            const { data: normaEnergia } = await supabase
+                .from("normas")
+                .select("id, codigo, materia, submateria, keywords")
+                .eq("codigo", "RD 390/2021")
+                .limit(1)
+                .maybeSingle();
 
-            if (energyKeywords.some(kw => questionLower.includes(kw))) {
-                const { data: normaMateria } = await supabase
-                    .from("normas")
-                    .select("id, codigo")
-                    .eq("codigo", "RD 390/2021")
-                    .limit(1)
-                    .maybeSingle();
-
-                if (normaMateria) {
-                    parsedNormaId = normaMateria.id;
-                    detectedMateria = "energia";
-                    detectedNormaPorMateria = "RD 390/2021";
-                    detectedNormaIdPorMateria = normaMateria.id;
+            let matchedEnergy = false;
+            if (normaEnergia) {
+                let keywordsArray: string[] = [];
+                if (typeof normaEnergia.keywords === "string") {
+                    keywordsArray = normaEnergia.keywords.split(",");
+                } else if (Array.isArray(normaEnergia.keywords)) {
+                    keywordsArray = normaEnergia.keywords;
                 }
-            } else {
+
+                const termsToMatch = [
+                    normaEnergia.materia,
+                    normaEnergia.submateria,
+                    ...keywordsArray
+                ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
+
+                if (termsToMatch.some(kw => questionLower.includes(kw))) {
+                    parsedNormaId = normaEnergia.id;
+                    detectedMateria = normaEnergia.materia || "energia";
+                    detectedNormaPorMateria = "RD 390/2021";
+                    detectedNormaIdPorMateria = normaEnergia.id;
+                    matchedEnergy = true;
+                }
+            }
+
+            if (!matchedEnergy) {
                 const fireKeywords = ["incendios", "protección contra incendios", "pci", "evacuación", "sectorización"];
                 const hasFireKeyword = fireKeywords.some(kw => {
                     if (kw === "pci") return /\bpci\b/i.test(questionLower);
