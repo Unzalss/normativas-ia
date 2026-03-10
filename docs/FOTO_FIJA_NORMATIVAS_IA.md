@@ -541,4 +541,63 @@ INGESTIÓN PROFESIONAL CONTROLADA
 
 ---
 
+# 19. Estado del motor de búsqueda (marzo 2026)
+
+Se ha añadido una capa de priorización previa al motor vectorial para mejorar la precisión jurídica.
+
+Orden de prioridad actual:
+
+1. **Selector de norma del usuario (máxima prioridad)**  
+   Si el usuario selecciona una norma en el frontend, la búsqueda se restringe exclusivamente a esa norma.
+
+2. **Detección automática de norma en la pregunta**  
+   El sistema detecta referencias como:
+
+   RD 390/2021  
+   RD 393/2007  
+   Ley 8/2015  
+
+   Cuando detecta una referencia normativa, restringe automáticamente la búsqueda vectorial a esa norma.
+
+3. **Priorización inicial por materia**
+
+   Actualmente implementada para energía:
+
+   Materia detectada:  
+   - certificación energética  
+   - certificado energético  
+   - eficiencia energética
+
+   Norma priorizada:
+
+   RD 390/2021
+
+   Esto permite que preguntas como:
+
+   ¿Quién debe firmar el certificado energético?
+
+   funcionen correctamente incluso cuando el selector está en **“Todas las normas”**.
+
+4. **Búsqueda global**
+
+   Si no se detecta norma ni materia, el sistema realiza búsqueda vectorial sobre todas las normas permitidas.
+
+---
+
+## Validación realizada
+
+Se realizaron pruebas manuales que confirmaron:
+
+- selector de norma funciona correctamente
+- detección de norma en la pregunta funciona
+- priorización por materia funciona
+- no se mezclan normas incorrectas
+- preguntas fuera de la norma devuelven  
+  **“No consta en las normas consultadas.”**
+
+Estado del sistema:
+
+FUNCIONANDO Y VALIDADO
+---
+
 # FIN DE FOTO FIJA

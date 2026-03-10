@@ -144,6 +144,28 @@ export async function POST(req: Request) {
                     detectedNormaPorMateria = "RD 390/2021";
                     detectedNormaIdPorMateria = normaMateria.id;
                 }
+            } else {
+                const fireKeywords = ["incendios", "protección contra incendios", "pci", "evacuación", "sectorización"];
+                const hasFireKeyword = fireKeywords.some(kw => {
+                    if (kw === "pci") return /\bpci\b/i.test(questionLower);
+                    return questionLower.includes(kw);
+                });
+
+                if (hasFireKeyword) {
+                    const { data: normaMateria } = await supabase
+                        .from("normas")
+                        .select("id, codigo")
+                        .eq("codigo", "ZAR-PPCI")
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (normaMateria) {
+                        parsedNormaId = normaMateria.id;
+                        detectedMateria = "incendios";
+                        detectedNormaPorMateria = "ZAR-PPCI";
+                        detectedNormaIdPorMateria = normaMateria.id;
+                    }
+                }
             }
         }
 
