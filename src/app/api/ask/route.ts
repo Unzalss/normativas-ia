@@ -199,25 +199,33 @@ export async function POST(req: Request) {
                 }
 
                 if (!matchedFire) {
-                    const accessibilityKeywords = [
-                        "accesibilidad", "accesible", "barreras arquitectónicas",
-                        "eliminación de barreras", "itinerario accesible",
-                        "rampa accesible", "ascensor accesible", "normativa de accesibilidad"
-                    ];
+                    // 3. Accesibilidad (Dinámico vía metadata DB)
+                    const { data: normaAccesibilidad } = await supabase
+                        .from("normas")
+                        .select("id, codigo, materia, submateria, keywords")
+                        .eq("codigo", "RD 505/2007")
+                        .limit(1)
+                        .maybeSingle();
 
-                    if (accessibilityKeywords.some(kw => questionLower.includes(kw))) {
-                        const { data: normaMateria } = await supabase
-                            .from("normas")
-                            .select("id, codigo")
-                            .eq("codigo", "RD 505/2007")
-                            .limit(1)
-                            .maybeSingle();
+                    if (normaAccesibilidad) {
+                        let keywordsArray: string[] = [];
+                        if (typeof normaAccesibilidad.keywords === "string") {
+                            keywordsArray = normaAccesibilidad.keywords.split(",");
+                        } else if (Array.isArray(normaAccesibilidad.keywords)) {
+                            keywordsArray = normaAccesibilidad.keywords;
+                        }
 
-                        if (normaMateria) {
-                            parsedNormaId = normaMateria.id;
-                            detectedMateria = "accesibilidad";
+                        const accessTermsToMatch = [
+                            normaAccesibilidad.materia,
+                            normaAccesibilidad.submateria,
+                            ...keywordsArray
+                        ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
+
+                        if (accessTermsToMatch.some(kw => questionLower.includes(kw))) {
+                            parsedNormaId = normaAccesibilidad.id;
+                            detectedMateria = normaAccesibilidad.materia || "accesibilidad";
                             detectedNormaPorMateria = "RD 505/2007";
-                            detectedNormaIdPorMateria = normaMateria.id;
+                            detectedNormaIdPorMateria = normaAccesibilidad.id;
                         }
                     }
                 }
