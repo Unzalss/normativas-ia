@@ -128,105 +128,45 @@ export async function POST(req: Request) {
         // Detección automática por materia si no hay norma preseleccionada ni detectada
         if (!parsedNormaId) {
             const questionLower = question.toLowerCase();
-            // 1. Energía (Dinámico vía metadata DB)
-            const { data: normaEnergia } = await supabase
+            let normMateriaQuery = supabase
                 .from("normas")
                 .select("id, codigo, materia, submateria, keywords")
-                .eq("codigo", "RD 390/2021")
-                .limit(1)
-                .maybeSingle();
+                .not("keywords", "is", null);
 
-            let matchedEnergy = false;
-            if (normaEnergia) {
-                let keywordsArray: string[] = [];
-                if (typeof normaEnergia.keywords === "string") {
-                    keywordsArray = normaEnergia.keywords.split(",");
-                } else if (Array.isArray(normaEnergia.keywords)) {
-                    keywordsArray = normaEnergia.keywords;
-                }
-
-                const termsToMatch = [
-                    normaEnergia.materia,
-                    normaEnergia.submateria,
-                    ...keywordsArray
-                ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
-
-                if (termsToMatch.some(kw => questionLower.includes(kw))) {
-                    parsedNormaId = normaEnergia.id;
-                    detectedMateria = normaEnergia.materia || "energia";
-                    detectedNormaPorMateria = "RD 390/2021";
-                    detectedNormaIdPorMateria = normaEnergia.id;
-                    matchedEnergy = true;
-                }
+            if (userId) {
+                normMateriaQuery = normMateriaQuery.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+            } else {
+                normMateriaQuery = normMateriaQuery.is("owner_user_id", null);
             }
 
-            if (!matchedEnergy) {
-                // 2. Incendios (Dinámico vía metadata DB)
-                const { data: normaIncendios } = await supabase
-                    .from("normas")
-                    .select("id, codigo, materia, submateria, keywords")
-                    .eq("codigo", "ZAR-PPCI")
-                    .limit(1)
-                    .maybeSingle();
+            const { data: candidateNormas } = await normMateriaQuery;
 
-                let matchedFire = false;
-                if (normaIncendios) {
+            if (candidateNormas && candidateNormas.length > 0) {
+                for (const norma of candidateNormas) {
                     let keywordsArray: string[] = [];
-                    if (typeof normaIncendios.keywords === "string") {
-                        keywordsArray = normaIncendios.keywords.split(",");
-                    } else if (Array.isArray(normaIncendios.keywords)) {
-                        keywordsArray = normaIncendios.keywords;
+                    if (typeof norma.keywords === "string") {
+                        keywordsArray = norma.keywords.split(",");
+                    } else if (Array.isArray(norma.keywords)) {
+                        keywordsArray = norma.keywords;
                     }
 
-                    const fireTermsToMatch = [
-                        normaIncendios.materia,
-                        normaIncendios.submateria,
+                    const termsToMatch = [
+                        norma.materia,
+                        norma.submateria,
                         ...keywordsArray
                     ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
 
-                    const hasFireKeyword = fireTermsToMatch.some(kw => {
+                    const hasMatch = termsToMatch.some(kw => {
                         if (kw === "pci") return /\bpci\b/i.test(questionLower);
                         return questionLower.includes(kw);
                     });
 
-                    if (hasFireKeyword) {
-                        parsedNormaId = normaIncendios.id;
-                        detectedMateria = normaIncendios.materia || "incendios";
-                        detectedNormaPorMateria = "ZAR-PPCI";
-                        detectedNormaIdPorMateria = normaIncendios.id;
-                        matchedFire = true;
-                    }
-                }
-
-                if (!matchedFire) {
-                    // 3. Accesibilidad (Dinámico vía metadata DB)
-                    const { data: normaAccesibilidad } = await supabase
-                        .from("normas")
-                        .select("id, codigo, materia, submateria, keywords")
-                        .eq("codigo", "RD 505/2007")
-                        .limit(1)
-                        .maybeSingle();
-
-                    if (normaAccesibilidad) {
-                        let keywordsArray: string[] = [];
-                        if (typeof normaAccesibilidad.keywords === "string") {
-                            keywordsArray = normaAccesibilidad.keywords.split(",");
-                        } else if (Array.isArray(normaAccesibilidad.keywords)) {
-                            keywordsArray = normaAccesibilidad.keywords;
-                        }
-
-                        const accessTermsToMatch = [
-                            normaAccesibilidad.materia,
-                            normaAccesibilidad.submateria,
-                            ...keywordsArray
-                        ].filter(Boolean).map(t => String(t).toLowerCase().trim()).filter(t => t.length > 2);
-
-                        if (accessTermsToMatch.some(kw => questionLower.includes(kw))) {
-                            parsedNormaId = normaAccesibilidad.id;
-                            detectedMateria = normaAccesibilidad.materia || "accesibilidad";
-                            detectedNormaPorMateria = "RD 505/2007";
-                            detectedNormaIdPorMateria = normaAccesibilidad.id;
-                        }
+                    if (hasMatch) {
+                        parsedNormaId = norma.id;
+                        detectedMateria = norma.materia || "detectada";
+                        detectedNormaPorMateria = norma.codigo;
+                        detectedNormaIdPorMateria = norma.id;
+                        break;
                     }
                 }
             }
