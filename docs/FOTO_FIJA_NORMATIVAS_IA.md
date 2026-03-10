@@ -407,9 +407,16 @@ El buscador ya usa el siguiente orden de prioridad:
 3. priorización por materia  
 4. búsqueda global  
 
-Actualmente la priorización por materia solo está implementada para:
+Actualmente la priorización por materia funciona de forma dinámica
+a partir de los campos metadata de la tabla `normas`.
 
-energía / certificación energética → RD 390/2021
+Las normas que tienen rellenos:
+
+materia  
+submateria  
+keywords
+
+pueden ser priorizadas automáticamente sin modificar el código.
 
 La siguiente fase consiste en ampliar este sistema a más bloques normativos.
 
@@ -491,7 +498,132 @@ Estado del sistema:
 ✔ escalable a nuevas normas  
 ✔ compatible con normas privadas por usuario
 
+
+
 ---
+
+# 20. Sistema de control estricto de alucinaciones del LLM (IMPLEMENTADO)
+
+El prompt del sistema usado en `/api/ask` ha sido reforzado para evitar respuestas inventadas.
+
+Reglas actuales del modelo:
+
+1. El modelo solo puede responder con información presente en los fragmentos recuperados.
+2. Si la respuesta no aparece en el contexto, debe responder exactamente:
+
+"No consta en las normas consultadas."
+
+3. Cuando cite contenido jurídico debe usar el formato:
+
+[Artículo X]
+
+4. No puede introducir normas que no estén presentes en el contexto recuperado.
+5. No puede usar conocimiento externo del modelo.
+
+Esto reduce significativamente las alucinaciones jurídicas.
+
+---
+
+# 21. Base estructural para relaciones jurídicas entre normas (IMPLEMENTADO)
+
+Se ha creado la tabla:
+
+normas_relaciones
+
+Propósito:
+
+permitir registrar relaciones jurídicas entre normas como:
+
+- deroga
+- modifica
+- desarrolla
+- remite
+- sustituye
+
+Columnas principales:
+
+id  
+norma_origen_id  
+norma_destino_id  
+tipo_relacion  
+articulo_origen  
+articulo_destino  
+descripcion  
+created_at  
+origen_deteccion  
+estado_revision  
+confianza  
+evidencia_texto  
+metodo_deteccion  
+
+Estados posibles de revisión:
+
+pendiente  
+confirmada  
+rechazada
+
+Esto permitirá en el futuro:
+
+- detectar conflictos normativos
+- explicar derogaciones
+- mostrar jerarquía normativa
+- mejorar la respuesta jurídica del buscador
+
+---
+
+# 22. Vista de consulta de vigencia normativa (IMPLEMENTADO)
+
+Se ha creado la vista:
+
+vw_normas_vigencia
+
+Propósito:
+
+facilitar la consulta legible de relaciones normativas incluyendo:
+
+- norma origen
+- norma destino
+- tipo de relación
+- efecto sobre la vigencia
+- evidencia textual
+- estado de revisión
+
+Esta vista simplifica el uso futuro de:
+
+- vigencia normativa
+- derogaciones
+- relaciones entre normas
+
+sin necesidad de joins complejos en el backend.
+
+---
+
+# 23. Estado actual del sistema (REAL)
+
+El sistema actual ya tiene:
+
+✔ ingestión automática de normas  
+✔ fragmentación jurídica  
+✔ embeddings vectoriales  
+✔ RAG funcional  
+✔ filtrado por norma  
+✔ priorización dinámica por materia  
+✔ control de alucinaciones  
+✔ estructura para relaciones normativas  
+✔ estructura para control de vigencia  
+✔ vista vw_normas_vigencia para consultas de vigencia
+
+El buscador ya puede considerarse **funcional como MVP técnico**.
+
+Las siguientes mejoras se centran en:
+
+- rendimiento de búsqueda
+- automatización de metadata
+- detección automática de relaciones
+- mejora UX de subida de normas
+
+---
+
 
 ## Validación realizada
 

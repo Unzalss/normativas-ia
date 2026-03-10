@@ -115,9 +115,33 @@ export async function POST(req: Request) {
         // --- INGESTIÓN PIPELINE ---
         try {
             const rawText = await extractTextFromUploadedFile(file, (file as any).name);
+
+            // --- AUTO Detección Metadata Básica ---
+            const textIntro = rawText.substring(0, 2000);
+
+            let detectedRango = rango;
+            if (!detectedRango) {
+                const matchRango = textIntro.match(/\b(Real Decreto|Ley Orgánica|Ley|Orden|Decreto|Resolución)\b/i);
+                if (matchRango) detectedRango = matchRango[1];
+            }
+
+            let detectedFecha = fecha_publicacion;
+            if (!detectedFecha) {
+                const matchFecha = textIntro.match(/de\s+\d{1,2}\s+de\s+[a-záéíóúñ]+\s+de\s+\d{4}/i);
+                if (matchFecha) detectedFecha = matchFecha[0];
+            }
+
+            if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion)) {
+                await supabase.from('normas').update({
+                    rango: detectedRango || null,
+                    fecha_publicacion: detectedFecha || null
+                }).eq('id', insertedNorma.id);
+            }
+
             const metadataProxy = {
-                titulo, codigo, ambito, rango, jurisdiccion,
-                fecha_publicacion: fecha_publicacion || undefined
+                titulo, codigo, ambito, jurisdiccion,
+                rango: detectedRango || null,
+                fecha_publicacion: detectedFecha || undefined
             };
             const fragments = parseNormaJuridica(rawText, metadataProxy);
 
