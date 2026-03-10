@@ -165,6 +165,28 @@ export async function POST(req: Request) {
                         detectedNormaPorMateria = "ZAR-PPCI";
                         detectedNormaIdPorMateria = normaMateria.id;
                     }
+                } else {
+                    const accessibilityKeywords = [
+                        "accesibilidad", "accesible", "barreras arquitectónicas",
+                        "eliminación de barreras", "itinerario accesible",
+                        "rampa accesible", "ascensor accesible", "normativa de accesibilidad"
+                    ];
+
+                    if (accessibilityKeywords.some(kw => questionLower.includes(kw))) {
+                        const { data: normaMateria } = await supabase
+                            .from("normas")
+                            .select("id, codigo")
+                            .eq("codigo", "RD 505/2007")
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (normaMateria) {
+                            parsedNormaId = normaMateria.id;
+                            detectedMateria = "accesibilidad";
+                            detectedNormaPorMateria = "RD 505/2007";
+                            detectedNormaIdPorMateria = normaMateria.id;
+                        }
+                    }
                 }
             }
         }
