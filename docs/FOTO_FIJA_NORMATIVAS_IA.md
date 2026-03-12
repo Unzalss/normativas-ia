@@ -625,6 +625,127 @@ Las siguientes mejoras se centran en:
 ---
 
 
+24. Automatización de metadata en subida de normas (IMPLEMENTADO)
+
+El pipeline de subida de normas ha sido ampliado para detectar metadata automáticamente durante la ingestión del documento.
+
+Ahora, al subir un PDF, el sistema ejecuta varias detecciones automáticas antes de generar los fragmentos jurídicos.
+
+Detección automática por Regex
+
+El sistema analiza los primeros ~2000 caracteres del documento para detectar:
+
+tipo de norma (Real Decreto, Ley, Orden, etc.)
+
+fecha de publicación
+
+Esto permite rellenar automáticamente los campos:
+
+rango
+fecha_publicacion
+
+si el usuario no los ha introducido manualmente.
+
+Clasificación temática automática (LLM)
+
+El sistema envía al modelo:
+
+el título de la norma
+
+los primeros 2000 caracteres del texto
+
+El modelo devuelve un JSON con:
+
+materia
+submateria
+
+Estos valores se guardan automáticamente en la tabla normas.
+
+Esto permite que la priorización por materia funcione sin intervención manual.
+
+Generación automática de keywords
+
+Si el usuario no introduce keywords manualmente, el sistema genera automáticamente un array combinando:
+
+materia
+submateria
+palabras relevantes del titulo
+
+El sistema elimina duplicados y palabras irrelevantes.
+
+Las keywords se guardan en la tabla normas.
+
+Resultado del sistema
+
+Al subir una norma ahora se generan automáticamente los siguientes metadatos:
+
+rango
+fecha_publicacion
+materia
+submateria
+keywords
+
+Esto permite que la norma se integre automáticamente en el sistema de priorización del buscador sin modificar el código.
+
+25. Próximos pasos inmediatos del proyecto
+
+El sistema ya funciona como MVP técnico funcional, pero quedan tres pasos clave antes de escalar el producto.
+
+1. Probar subida completa de una norma
+
+Subir una nueva norma real para validar:
+
+detección automática de metadata
+
+generación automática de keywords
+
+integración en el buscador
+
+Norma prevista para test:
+
+RSCIEI — RD 164/2025
+
+Se debe comprobar:
+
+materia detectada
+submateria detectada
+keywords generadas
+funcionamiento del buscador sobre esa norma.
+
+2. Optimización de velocidad del buscador
+
+Actualmente el buscador es más lento de lo deseado.
+
+Se debe optimizar:
+
+consultas a normas
+consultas a normas_partes
+ranking híbrido
+tamaño del contexto enviado al LLM
+
+Objetivo:
+
+reducir significativamente la latencia del buscador.
+
+3. Detección automática de relaciones jurídicas entre normas
+
+El sistema ya dispone de la estructura:
+
+tabla normas_relaciones
+vista vw_normas_vigencia
+
+Falta implementar el pipeline que detecte automáticamente:
+
+derogaciones
+modificaciones
+remisiones entre normas
+
+Esto permitirá:
+
+explicar vigencia normativa
+mostrar relaciones entre normas
+detectar conflictos jurídicos.
+
 ## Validación realizada
 
 Se realizaron pruebas manuales que confirmaron:

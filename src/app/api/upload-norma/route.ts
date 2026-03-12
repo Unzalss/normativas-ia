@@ -9,6 +9,22 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Timeout de Vercel extendido (min 60s)
 
+function parseSpanishDateToISO(text: string): string | null {
+    const months: Record<string, string> = {
+        'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+        'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+        'septiembre': '09', 'setiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+    };
+    const match = text.match(/(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4})/i);
+    if (match) {
+        const day = match[1].padStart(2, '0');
+        const month = months[match[2].toLowerCase()];
+        const year = match[3];
+        if (day && month && year) return `${year}-${month}-${day}`;
+    }
+    return null;
+}
+
 export async function POST(req: Request) {
     try {
         const supabaseUrl = process.env.SUPABASE_URL!;
@@ -135,8 +151,13 @@ export async function POST(req: Request) {
             let detectedFecha = fecha_publicacion;
             if (!detectedFecha) {
                 const matchFecha = textIntro.match(/de\s+\d{1,2}\s+de\s+[a-záéíóúñ]+\s+de\s+\d{4}/i);
-                if (matchFecha) detectedFecha = matchFecha[0];
+                if (matchFecha) {
+                    const parsedIso = parseSpanishDateToISO(matchFecha[0]);
+                    if (parsedIso) detectedFecha = parsedIso;
+                }
             }
+
+            console.log("[METADATA AUTO-REGEX] Rango:", detectedRango, "| Fecha:", detectedFecha);
 
             let detectedMateria = materia;
             let detectedSubmateria = submateria;
@@ -194,13 +215,24 @@ Materias posibles:
             }
 
             if ((detectedRango && !rango) || (detectedFecha && !fecha_publicacion) || (detectedMateria && !materia) || (detectedSubmateria && !submateria) || (detectedKeywords && !keywords)) {
-                await supabase.from('normas').update({
+
+                const updatePayload = {
                     rango: detectedRango || null,
                     fecha_publicacion: detectedFecha || null,
                     materia: detectedMateria || null,
                     submateria: detectedSubmateria || null,
                     keywords: detectedKeywords || null
-                }).eq('id', insertedNorma.id);
+                };
+
+                console.log("[METADATA AUTO-UPDATE] Payload a guardar en Supabase:", updatePayload);
+
+                const { error: updateError } = await supabase.from('normas').update(updatePayload).eq('id', insertedNorma.id);
+
+                if (updateError) {
+                    console.error("[METADATA AUTO-UPDATE ERROR] Fallo al actualizar la tabla normas:", updateError.message, updateError.details);
+                } else {
+                    console.log("[METADATA AUTO-UPDATE] Fila actualizada exitosamente en DB.");
+                }
             }
 
             const metadataProxy = {
