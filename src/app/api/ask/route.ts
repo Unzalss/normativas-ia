@@ -212,11 +212,12 @@ export async function POST(req: Request) {
         // Vector Search parameters
         // Ya resuelto arriba como incomingNormaId, y parseado seguro.
 
-        // --- 1. VECTOR SEARCH ---
-        console.log(`[VECTOR SEARCH] Ejecutando búsqueda vectorial. Filtro norma: ${parsedNormaId || 'TODAS'}`);
+        // --- 1. NATIVE HYBRID SEARCH (Vector + FTS + SQL Boosting) ---
+        console.log(`[HYBRID SEARCH] Ejecutando búsqueda híbrida. Filtro norma: ${parsedNormaId || 'TODAS'} | Pregunta: ${question.substring(0, 50)}...`);
 
         let rpcQuery = supabase.rpc("buscar_norma_partes", {
             q_embedding,
+            q_text: question,
             q_norma_id: parsedNormaId || null,
             k: parsedNormaId ? k : K_GLOBAL
         });
@@ -245,293 +246,17 @@ export async function POST(req: Request) {
         const { data, error } = await rpcQuery;
 
         if (error) {
-            console.error("Error RPC vectorial:", error.message, error.details);
+            console.error("Error RPC vectorial/híbrido:", error.message, error.details);
             debugInfo.rpcParamErrors = error;
             return NextResponse.json({ error: `Supabase RPC Error: ${error.message} - ${error.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
         }
 
         let rawData = data || [];
         debugInfo.rowsLength = rawData.length;
-        console.log(`Filas vectoriales devueltas: ${rawData.length}`);
+        console.log(`Filas devueltas por Hybrid Search: ${rawData.length}`);
 
-        if (rawData && rawData.length > 0) {
-            console.log("DEBUG rawData[0]:", rawData[0]);
-        }
-
-        let validData = (rawData || []).filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65);
-
-        // If not enough valid results, try fetching more (sólo para búsquedas de una norma)
-        if (validData.length < k && parsedNormaId !== null) {
-            const kRetry = k * 3;
-            debugInfo.limitRetry = kRetry;
-
-            // Reintento también con el eq explícito dictado
-            let retryQuery = supabase.rpc("buscar_norma_partes", {
-                q_embedding,
-                q_norma_id: parsedNormaId,
-                k: kRetry
-            }).eq("norma_id", parsedNormaId);
-
-            const { data: retryData, error: retryError } = await retryQuery;
-
-            console.log("--- Búsqueda en Supabase 2 (Retry) ---");
-            console.log(`norma_id: ${parsedNormaId}, limit(kRetry): ${kRetry}`);
-            if (retryError) {
-                console.error("Error RPC 2:", retryError.message, retryError.details);
-                debugInfo.rpcParamErrorsRetry = retryError;
-                return NextResponse.json({ error: `Supabase RPC Retry Error: ${retryError.message} - ${retryError.details}`, debug: xDebug ? debugInfo : undefined }, { status: 500 });
-            }
-
-            debugInfo.filasDevueltas2 = retryData?.length || 0;
-            console.log(`Filas devueltas 2: ${retryData?.length || 0}`);
-
-            if (!retryError && retryData) {
-                validData = retryData.filter((item: any) => isValidFragment(item.content || item.texto || "") && getScore(item) >= 0.65);
-            }
-        }
-
-        // HYBRID SEARCH: Text exact match
-        let textResults: any[] = [];
-        let searchTerm = null;
-        const quoteMatch = question.match(/"([^"]+)"/);
-        if (quoteMatch) {
-            searchTerm = quoteMatch[1];
-        } else {
-            const keywordMatch = question.match(/(art(?:í|i)culo\s+\d+|art\.\s*\d+|disposici(?:ó|o)n\s+[\w]+|anexo\s+[\w]+|cap(?:í|i)tulo\s+[\w]+)/i);
-            if (keywordMatch) {
-                searchTerm = keywordMatch[0];
-            }
-        }
-
-        if (searchTerm) {
-            console.log(`[TEXT SEARCH] Búsqueda exacta para: ${searchTerm}`);
-
-            let orCondition = `texto.ilike.%${searchTerm}%,seccion.ilike.%${searchTerm}%`;
-
-            // Detectar si el searchTerm es explícitamente un artículo (ej: "articulo 3", "art 3", "art. 3")
-            const isArticleQuery = searchTerm.match(/(?:art(?:í|i)culo|art\.?)\s+(\d+)/i);
-            if (isArticleQuery) {
-                const num = isArticleQuery[1];
-                // Usar "_" como comodín de un solo carácter para saltarnos el problema del acento (art_culo)
-                orCondition = `seccion.ilike.%art_culo ${num}%,seccion.ilike.%art_culo ${num}.%,texto.ilike.%${searchTerm}%`;
-            }
-
-            let textQuery = supabase
-                .from('normas_partes')
-                .select('id, norma_id, tipo, seccion, texto, normas!inner(codigo, titulo)')
-                .or(orCondition)
-                .limit(k * 2);
-
-            if (parsedNormaId !== null) {
-                textQuery = textQuery.eq('norma_id', parsedNormaId);
-            } else {
-                let allowedNormaIds: number[] = [];
-                let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
-                if (userId) {
-                    query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
-                } else {
-                    query = query.is("owner_user_id", null);
-                }
-                const { data: ns } = await query;
-                if (ns && ns.length > 0) {
-                    allowedNormaIds = ns.map(n => n.id);
-                    textQuery = textQuery.in('norma_id', allowedNormaIds);
-                } else {
-                    textQuery = textQuery.eq('norma_id', -1);
-                }
-            }
-
-            const { data: txtData, error: txtError } = await textQuery;
-            if (txtError) {
-                console.error("Text search error:", txtError);
-            } else if (txtData) {
-                textResults = txtData.map((row: any) => ({
-                    ...row,
-                    codigo: row.normas?.codigo,
-                    norma_titulo: row.normas?.titulo,
-                    score: 0.99 // Alta puntuación para priorizar exact matches
-                })).filter((item: any) => isValidFragment(item.texto || item.content || ""));
-            }
-        }
-
-        if (textResults.length > 0) {
-            const combinedMap = new Map();
-            // Vector results
-            for (const row of validData) {
-                const key = row.parte_id || row.id;
-                combinedMap.set(key, { ...row, score: getScore(row) });
-            }
-            // Text results over vector results
-            for (const row of textResults) {
-                const key = row.parte_id || row.id;
-                if (combinedMap.has(key)) {
-                    combinedMap.get(key).score = Math.max(combinedMap.get(key).score, 0.99);
-                } else {
-                    combinedMap.set(key, row);
-                }
-            }
-            validData = Array.from(combinedMap.values()).sort((a, b) => b.score - a.score);
-            debugInfo.textSearchResults = textResults.length;
-        }
-
-        // 2.1 Concept Reinforcement Search (if no explicit exact match)
-        let conceptResults: any[] = [];
-        if (!searchTerm) {
-            const stopwords = new Set(['sobre', 'entre', 'hacia', 'hasta', 'desde', 'donde', 'cuando', 'porque', 'quien', 'quienes', 'cuales', 'segun', 'puede', 'pueden', 'deben', 'debe', 'tambien', 'estan', 'estos', 'estas', 'parte', 'forma', 'mismo', 'misma', 'aquel', 'aquella']);
-            const normalizeText = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-            const concepts = question
-                .split(/[\s,.;:!?()¿¡'"\-]+/)
-                .filter((w: string) => w.length >= 5)
-                .map((w: string) => w.toLowerCase())
-                .filter((w: string) => !stopwords.has(normalizeText(w)))
-                .slice(0, 5);
-
-            if (concepts.length > 0) {
-                console.log(`[CONCEPT SEARCH] Buscando conceptos:`, concepts);
-                const orConditions = concepts.map((c: string) => `texto.ilike.%${c}%,seccion.ilike.%${c}%`).join(',');
-
-                let conceptQuery = supabase
-                    .from('normas_partes')
-                    .select('id, norma_id, tipo, seccion, texto, normas!inner(codigo, titulo)')
-                    .or(orConditions)
-                    .limit(k * 2);
-
-                if (parsedNormaId !== null) {
-                    conceptQuery = conceptQuery.eq('norma_id', parsedNormaId);
-                } else {
-                    let allowedNormaIds: number[] = [];
-                    let query = supabase.from("normas").select("id").limit(MAX_NORMAS);
-                    if (userId) {
-                        query = query.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
-                    } else {
-                        query = query.is("owner_user_id", null);
-                    }
-                    const { data: ns } = await query;
-                    if (ns && ns.length > 0) {
-                        allowedNormaIds = ns.map(n => n.id);
-                        conceptQuery = conceptQuery.in('norma_id', allowedNormaIds);
-                    } else {
-                        conceptQuery = conceptQuery.eq('norma_id', -1);
-                    }
-                }
-
-                const { data: cData, error: cError } = await conceptQuery;
-                if (cError) {
-                    console.error("Concept search error:", cError);
-                } else if (cData) {
-                    conceptResults = cData.map((row: any) => ({
-                        ...row,
-                        codigo: row.normas?.codigo,
-                        norma_titulo: row.normas?.titulo,
-                        score: 0.70 // Refuerzo
-                    })).filter((item: any) => isValidFragment(item.texto || item.content || ""));
-                }
-            }
-        }
-
-        if (conceptResults.length > 0) {
-            const combinedMap = new Map();
-            for (const row of validData) {
-                const key = row.parte_id || row.id;
-                combinedMap.set(key, { ...row, score: getScore(row) });
-            }
-            for (const row of conceptResults) {
-                const key = row.parte_id || row.id;
-                if (combinedMap.has(key)) {
-                    combinedMap.get(key).score = Math.max(combinedMap.get(key).score, 0.70);
-                } else {
-                    combinedMap.set(key, row);
-                }
-            }
-            validData = Array.from(combinedMap.values()).sort((a, b) => b.score - a.score);
-            debugInfo.conceptSearchResults = conceptResults.length;
-        }
-
-        validData = validData.map((item: any) => {
-            const textToMatch = item.texto || item.content || "";
-            const matchArt = textToMatch.match(/art(í|i)culo\s+\d+/i);
-            const matchCap = textToMatch.match(/cap(í|i)tulo\s+[ivxlcdm]+/i);
-            const matchTitle = textToMatch.match(/art(?:í|i)culo\s+\d+\.\s*([^\n.]+)/i);
-
-            const newItem = { ...item };
-            if (matchArt) {
-                newItem.articulo_detectado = matchArt[0];
-            }
-            if (matchCap) {
-                newItem.capitulo_detectado = matchCap[0];
-            }
-            if (matchTitle && matchTitle[1]) {
-                newItem.titulo_articulo = matchTitle[1].trim();
-            }
-            return newItem;
-        });
-
-        const stopwordsBasicReRank = new Set(['sobre', 'entre', 'hacia', 'hasta', 'desde', 'donde', 'cuando', 'porque', 'quien', 'quienes', 'cuales', 'segun', 'puede', 'pueden', 'deben', 'debe', 'tambien', 'estan', 'estos', 'estas', 'parte', 'forma', 'mismo', 'misma', 'aquel', 'aquella']);
-        const normLocalInfo = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const questionConcepts = question
-            .split(/[\s,.;:!?()¿¡'"\-]+/)
-            .filter((w: string) => w.length >= 5)
-            .map((w: string) => w.toLowerCase())
-            .filter((w: string) => !stopwordsBasicReRank.has(normLocalInfo(w)))
-            .slice(0, 3);
-
-        const questionLower = question.toLowerCase();
-        const penaltyWords = ["preámbulo", "preambulo", "índice", "indice", "anexo", "tabla", "disposición", "disposicion", "exposición de motivos", "exposicion de motivos"];
-        const hasPenaltyInQuestion = penaltyWords.some(w => questionLower.includes(w));
-
-        const articulo_detectado = question.match(/(art(?:í|i)culo|art\.)\s*\d+/i)?.[0] ?? null;
-        const qMatchTitle = question.match(/art(?:í|i)culo\s+\d+\.\s*([^\n.]+)/i);
-        const titulo_articulo = qMatchTitle ? qMatchTitle[1].trim() : null;
-
-        const scoreBoost = (item: any) => {
-            let boost = 0;
-
-            if (articulo_detectado) {
-                const detectedNum = String(articulo_detectado).match(/\d+/)?.[0];
-                const itemArt = item.articulo_num || item.articulo || item.metadata?.articulo || item.metadata?.articulo_num;
-                if (detectedNum && itemArt && String(itemArt).match(/\d+/)?.[0] === detectedNum) {
-                    boost += 0.25;
-                }
-            }
-
-            if (titulo_articulo) {
-                const titDet = String(titulo_articulo).toLowerCase();
-                const itemTit = String(item.articulo_titulo || item.titulo || item.heading || item.caption || item.metadata?.articulo_titulo || "").toLowerCase();
-                if (titDet && itemTit.includes(titDet)) {
-                    boost += 0.12;
-                }
-            }
-
-            if (!hasPenaltyInQuestion) {
-                const itemPartsText = String(item.articulo_titulo || item.seccion || item.parte_titulo || item.texto || "").toLowerCase();
-                const hitPenalty = penaltyWords.some(w => itemPartsText.includes(w));
-                if (hitPenalty) {
-                    boost -= 0.20;
-                }
-            }
-
-            if (questionConcepts.length > 0) {
-                const itemTextLog = String(item.texto || item.content || "").toLowerCase();
-                const normItemText = normLocalInfo(itemTextLog);
-                const hitConcept = questionConcepts.some((c: string) => normItemText.includes(normLocalInfo(c)));
-                if (hitConcept) {
-                    boost += 0.08;
-                }
-            }
-
-            return boost;
-        };
-
-        validData = validData.map((x: any) => {
-            const baseScore = typeof x.score === 'number' ? x.score : getScore(x);
-            const boost = scoreBoost(x);
-            return {
-                ...x,
-                score: baseScore,
-                finalScore: baseScore + boost
-            };
-        }).sort((a: any, b: any) => b.finalScore - a.finalScore);
+        // Limpieza básica de fragmentos basuras devueltos por la BD
+        let validData = rawData.filter((item: any) => isValidFragment(item.content || item.texto || ""));
 
         // 1. Relevance Gate: Grounding & Threshold check
         let bestScore = 0;
@@ -541,7 +266,7 @@ export async function POST(req: Request) {
         for (const item of validData) {
             const score = getScore(item);
             if (score > bestScore) bestScore = score;
-            if (score >= 0.65) strongCount++;
+            if (score >= 0.70) strongCount++;
             if (score >= 0.50) mediumCount++;
         }
 
