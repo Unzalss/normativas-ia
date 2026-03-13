@@ -115,11 +115,7 @@ export function parseNormaJuridica(text: string, _metadata: NormaMetadataBase): 
         const ext = extractMetadataFromTitle(currentTitle);
         const esIndice = blockText.toLowerCase().includes('índice') && blockText.length < 500;
 
-        let apartadosArr = [blockText];
-        // Solo dividimos por apartados si garantizamos coherencia (Artículos)
-        if (ext.tipo === 'Artículo') {
-            apartadosArr = splitLongLegalUnitByApartados(blockText);
-        }
+        let apartadosArr = splitByApartadosAndLists(blockText);
 
         apartadosArr.forEach((apText, idx) => {
             const subTitle = apartadosArr.length > 1 ? `${currentTitle} - Ap. ${idx + 1}` : currentTitle;
@@ -142,15 +138,15 @@ export function parseNormaJuridica(text: string, _metadata: NormaMetadataBase): 
     return fragments;
 }
 
-// Wrapper para aplicar la subdivisión por longitud extrema (> 6000) de forma bruta a los fragmentos resultantes
+// Wrapper para aplicar la subdivisión semántica a fragmentos demasiado largos (> 800 char)
 function pushSplitFragments(fragments: ParsedFragment[], template: ParsedFragment) {
     const rawText = template.texto;
-    if (rawText.length > 6000) {
-        const chunks = splitLongTextBruteForce(rawText, 6000);
+    if (rawText.length > 800) {
+        const chunks = splitTextWithOverlap(rawText, 800, 120);
         chunks.forEach((chunk, i) => {
             fragments.push({
                 ...template,
-                seccion: chunks.length > 1 ? `${template.seccion} [Parte ${i + 1}]` : template.seccion,
+                seccion: chunks.length > 1 ? `${template.seccion} [Bloque ${i + 1}]` : template.seccion,
                 texto: chunk
             });
         });
@@ -159,10 +155,11 @@ function pushSplitFragments(fragments: ParsedFragment[], template: ParsedFragmen
     }
 }
 
-// División estricta de apartados (solo para artículos, buscando naturalidad)
-function splitLongLegalUnitByApartados(texto: string): string[] {
-    const apartadoRegex = /\n\s*(?:\d+[\.\)]|[a-z]\))\s+[A-Z]/g;
-    const matches = Array.from(texto.matchAll(apartadoRegex));
+// División estricta de apartados y listas numeradas o alfanuméricas
+function splitByApartadosAndLists(texto: string): string[] {
+    // Busca: nueva linea seguida de "1.", "a)", "1º", "iv)", "-", etc. (listas comunes)
+    const listRegex = /\n\s*(?:\d+[\.\)º]|\b[a-z]\)|\b[ivxlcdm]+\)|\-|\•)\s+[A-Z¿¡]/gi;
+    const matches = Array.from(texto.matchAll(listRegex));
     if (matches.length < 1) return [texto];
 
     const out: string[] = [];
@@ -170,7 +167,7 @@ function splitLongLegalUnitByApartados(texto: string): string[] {
 
     for (let i = 0; i < matches.length; i++) {
         const match = matches[i];
-        if (match.index > prevIndex + 50) {
+        if (match.index > prevIndex + 30) {
             out.push(texto.substring(prevIndex, match.index).trim());
             prevIndex = match.index;
         }
@@ -180,32 +177,67 @@ function splitLongLegalUnitByApartados(texto: string): string[] {
     return out.filter(x => x.length > 20);
 }
 
-// Subdivisión bruta por longitud para asegurar calidad de embeddings y evitar errores de token límite
-function splitLongTextBruteForce(texto: string, maxLength: number): string[] {
-    const out: string[] = [];
+// Subdivisión semántica con tamaño límite estricto y solapamiento sin romper frases
+export function splitTextWithOverlap(texto: string, maxLength: number, overlapChars: number): string[] {
+    if (texto.length <= maxLength) return [texto.trim()];
+
+    const chunks: string[] = [];
     let start = 0;
 
     while (start < texto.length) {
         let end = start + maxLength;
 
-        if (end < texto.length) {
-            const searchWindow = texto.substring(end - 300, end);
-            const lastPara = searchWindow.lastIndexOf('\n\n');
-            if (lastPara !== -1) {
-                end = end - 300 + lastPara;
-            } else {
-                const lastDot = searchWindow.lastIndexOf('. ');
-                if (lastDot !== -1) {
-                    end = end - 300 + lastDot + 1;
-                }
+        if (end >= texto.length) {
+            chunks.push(texto.substring(start).trim());
+            break;
+        }
+
+        // Buscar el último punto o salto de línea antes del corte límite de 800
+        const cutDotSpace = texto.lastIndexOf('. ', end);
+        const cutDotNL = texto.lastIndexOf('.\n', end);
+        const cutNL = texto.lastIndexOf('\n', end);
+        let bestCut = Math.max(cutDotSpace, cutDotNL, cutNL);
+
+        if (bestCut <= start) {
+            // Backup 1: último espacio
+            bestCut = texto.lastIndexOf(' ', end);
+            if (bestCut <= start) {
+                // Backup crítico: forzar corte
+                bestCut = end;
             }
         }
 
-        out.push(texto.substring(start, end).trim());
-        start = end;
+        const chunk = texto.substring(start, bestCut + 1).trim();
+        if (chunk.length > 0) chunks.push(chunk);
+
+        let nextStart = bestCut + 1;
+        if (nextStart >= texto.length) break;
+
+        // Calcular el punto de partida del siguiente fragmento teniendo en cuenta el solapamiento
+        let overlapTarget = Math.max(start, nextStart - overlapChars);
+
+        const overlapDot = texto.indexOf('. ', overlapTarget);
+        const overlapNL = texto.indexOf('\n', overlapTarget);
+
+        let bestOverlapStart = -1;
+        if (overlapDot !== -1 && overlapDot < nextStart) bestOverlapStart = overlapDot + 2;
+        if (overlapNL !== -1 && overlapNL < nextStart && (bestOverlapStart === -1 || overlapNL < bestOverlapStart)) bestOverlapStart = overlapNL + 1;
+
+        if (bestOverlapStart !== -1 && bestOverlapStart < nextStart) {
+            start = bestOverlapStart;
+        } else {
+            // Intento final para no romper palabras en el overlap
+            const spaceOverlap = texto.indexOf(' ', overlapTarget);
+            start = (spaceOverlap !== -1 && spaceOverlap < nextStart) ? spaceOverlap + 1 : nextStart;
+        }
+
+        // Prevención de bucles infinitos en zonas anómalas sin espacios
+        if (start <= bestCut && chunk.length === 0) {
+            start = end;
+        }
     }
 
-    return out;
+    return chunks;
 }
 
 function createBaseFragment(tipo: string, seccion: string, texto: string, es_indice: boolean): ParsedFragment {
