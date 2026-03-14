@@ -215,12 +215,17 @@ export async function POST(req: Request) {
         // --- 1. NATIVE HYBRID SEARCH (Vector + FTS + SQL Boosting) ---
         console.log(`[HYBRID SEARCH] Ejecutando búsqueda híbrida. Filtro norma: ${parsedNormaId || 'TODAS'} | Pregunta: ${question.substring(0, 50)}...`);
 
-        let rpcQuery = supabase.rpc("buscar_norma_partes", {
+        const rpcParams: any = {
             q_embedding,
             q_text: question,
-            q_norma_id: parsedNormaId || null,
-            k: parsedNormaId ? k : K_GLOBAL
-        });
+            k: parsedNormaId ? Number(k) : K_GLOBAL
+        };
+
+        if (parsedNormaId) {
+            rpcParams.q_norma_id = parsedNormaId;
+        }
+
+        let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
 
         // Aplicamos el filtro en la consulta pgvector si el usuario selecciona una norma
         if (parsedNormaId) {

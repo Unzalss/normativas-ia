@@ -72,8 +72,16 @@ BEGIN
       (1 - (np.embedding <=> q_embedding)) AS vector_score,
       -- 2. Puntuación FTS (Full Text Search) con ts_rank (suele ser menor de 1, pero ayuda al cruce)
       ts_rank(to_tsvector('spanish', np.texto || ' ' || COALESCE(np.seccion, '')), websearch_to_tsquery('spanish', q_text)) AS fts_score,
-      -- 3. Boosting por coincidencia de Código de Norma en la pregunta (Direct query intent)
-      CASE WHEN norma_codigo_upper LIKE '%' || upper(n.codigo) || '%' THEN 0.25 ELSE 0 END AS boost_codigo,
+      -- 3. Boosting Fuerte por coincidencia Tácita/Directa de NORMA (Direct query intent)
+      CASE 
+        WHEN norma_codigo_upper LIKE '%' || upper(n.codigo) || '%' THEN 0.60
+        -- Variaciones frecuentes pedidas explícitamente y que no cruzan literal:
+        WHEN norma_codigo_upper LIKE '%CTE DB-SI%' AND upper(n.codigo) LIKE '%CTE DB-SI%' THEN 0.60
+        WHEN (norma_codigo_upper LIKE '%CTE %' OR norma_codigo_upper = 'CTE') AND upper(n.codigo) LIKE '%CTE%' THEN 0.60
+        WHEN norma_codigo_upper LIKE '%RSCIEI%' AND upper(n.codigo) LIKE '%RD 164%' THEN 0.60
+        WHEN norma_codigo_upper LIKE '%RIPCI%' AND upper(n.codigo) LIKE '%RD 513%' THEN 0.60
+        ELSE 0 
+      END AS boost_codigo,
       -- 4. Boosting estructural (si pregunta explícitamente el artículo, sección o tipo)
       CASE 
         WHEN lower(q_text) LIKE '%' || lower(np.tipo) || ' ' || lower(COALESCE(np.numero, '')) || '%' AND np.numero IS NOT NULL THEN 0.15
@@ -95,7 +103,7 @@ BEGIN
         )
       )
       -- Optimización límite inicial vectorial para no calcular TS sobre toda la base de datos completa
-      AND (1 - (np.embedding <=> q_embedding)) > 0.40
+      AND (1 - (np.embedding <=> q_embedding)) > 0.15
   )
   SELECT 
     s.id,
