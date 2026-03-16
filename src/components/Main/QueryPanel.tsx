@@ -110,20 +110,86 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     </div>
                 )}
 
-                {response && !error && (
-                    <div className={styles.responseSection}>
-                        <div className={styles.responseCard}>
-                            <h2 className={styles.responseTitle}>Respuesta</h2>
-                            <div className={styles.responseText}>
-                                {response.text.split('\n\n').map((paragraph, i) => (
-                                    <p key={i}>{paragraph}</p>
-                                ))}
+                {response && !error && (() => {
+                    // --- Parse structured LLM response into sections ---
+                    const text = response.text || '';
+
+                    // Extract each labelled section from the LLM output
+                    const extract = (label: string) => {
+                        const regex = new RegExp(
+                            `${label}:\\s*\\n?([\\s\\S]*?)(?=\\n(?:Respuesta breve|Fundamento normativo|Cita):|$)`,
+                            'i'
+                        );
+                        return text.match(regex)?.[1]?.trim() ?? '';
+                    };
+
+                    const respuestaBreve     = extract('Respuesta breve');
+                    const fundamentoNormativo = extract('Fundamento normativo');
+                    const cita               = extract('Cita');
+                    const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
+
+                    // Badge: show selected norma code if one is pinned
+                    const selectedNorma = selectedNormaId !== null
+                        ? normas.find(n => n.id === selectedNormaId)
+                        : null;
+
+                    // Render a [Artículo X] / [Bloque…] citation as a styled chip
+                    const renderCitations = (raw: string) =>
+                        raw.split('\n').filter(l => l.trim()).map((line, i) => (
+                            <div key={i} className={styles.citaLine}>
+                                <strong>{line.trim()}</strong>
                             </div>
+                        ));
 
+                    return (
+                        <div className={styles.responseSection}>
+                            {/* Norma badge */}
+                            {selectedNorma && (
+                                <div className={styles.normaBadgeRow}>
+                                    <span className={styles.normaBadge}>
+                                        {selectedNorma.titulo}
+                                    </span>
+                                </div>
+                            )}
 
+                            <div className={styles.responseCard}>
+                                <h2 className={styles.responseTitle}>Respuesta</h2>
+
+                                {isStructured ? (
+                                    <div className={styles.structuredBlocks}>
+                                        {respuestaBreve && (
+                                            <div className={styles.responseBlock}>
+                                                <div className={styles.blockLabel}>Respuesta breve</div>
+                                                <p className={styles.blockText}>{respuestaBreve}</p>
+                                            </div>
+                                        )}
+                                        {fundamentoNormativo && (
+                                            <div className={styles.responseBlock}>
+                                                <div className={styles.blockLabel}>Fundamento normativo</div>
+                                                <p className={styles.blockText}>{fundamentoNormativo}</p>
+                                            </div>
+                                        )}
+                                        {cita && (
+                                            <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
+                                                <div className={styles.blockLabel}>Artículos citados</div>
+                                                <div className={styles.citaList}>
+                                                    {renderCitations(cita)}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    // Fallback: plain paragraphs for unstructured text
+                                    <div className={styles.responseText}>
+                                        {text.split('\n\n').map((paragraph, i) => (
+                                            <p key={i}>{paragraph}</p>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
             </div>
         </div>
     );
