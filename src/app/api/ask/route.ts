@@ -348,16 +348,37 @@ export async function POST(req: Request) {
 
         if (!isLiteralMatch) {
             try {
-                const context = validData
+                // --- Reconstruct complete articles from fragments -------------------
+                // seccion values look like "Artículo 5 [Bloque 3]".
+                // Strip the internal block marker to get the base article reference.
+                const baseArticle = (sec: string) =>
+                    sec ? sec.replace(/\s*\[Bloque\s+\d+\]/gi, "").trim() : "";
+
+                // Group all fragments (not just the top slice) by their base article key
+                const articleMap = new Map<string, any[]>();
+                for (const frag of validData) {
+                    const key = baseArticle(frag.seccion || "") || `__frag_${frag.id}`;
+                    if (!articleMap.has(key)) articleMap.set(key, []);
+                    articleMap.get(key)!.push(frag);
+                }
+
+                // Sort each group by id (ascending) so text reads in document order
+                for (const frags of articleMap.values()) {
+                    frags.sort((a: any, b: any) => (a.id ?? 0) - (b.id ?? 0));
+                }
+
+                // Build context from reconstructed articles, capped at 12 entries
+                // Each entry = one logical article (possibly multiple fragments joined)
+                const reconstructedArticles = Array.from(articleMap.entries())
                     .slice(0, 12)
-                    .map((x: any, i: number) => {
-                        let header = x.seccion || "Fragmento";
-                        if (x.articulo_detectado) {
-                            header += ` (articulo_detectado: ${x.articulo_detectado})`;
-                        }
-                        return `[${i + 1}] ${header}: ${x.texto || x.content}`;
-                    })
-                    .join("\n\n");
+                    .map(([label, frags], i) => {
+                        const fullText = frags
+                            .map((f: any) => f.texto || f.content || "")
+                            .join("\n");
+                        return `[${i + 1}] ${label}:\n${fullText}`;
+                    });
+
+                const context = reconstructedArticles.join("\n\n");
 
                 const completion = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
