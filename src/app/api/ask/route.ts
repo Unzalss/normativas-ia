@@ -312,6 +312,31 @@ export async function POST(req: Request) {
             });
         }
 
+        // --- Article-number boost --------------------------------------------------
+        // Detect explicit article mentions like "artículo 5", "art. 17", "art 3"
+        const articuloMencionadoMatch = question.match(
+            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
+        );
+        const articuloMencionado = articuloMencionadoMatch
+            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
+            : null;
+
+        if (articuloMencionado) {
+            // Only `seccion` and `tipo` are real fields projected by the RPC.
+            // seccion typically contains "Artículo 5" or "Art. 5.1" as stored at ingest time.
+            validData.sort((a: any, b: any) => {
+                const seccionA = String(a.seccion || "");
+                const seccionB = String(b.seccion || "");
+                const matchA = new RegExp(`\\b${articuloMencionado}\\b`).test(seccionA);
+                const matchB = new RegExp(`\\b${articuloMencionado}\\b`).test(seccionB);
+                if (matchA && !matchB) return -1;
+                if (!matchA && matchB) return 1;
+                return getScore(b) - getScore(a); // fallback: score descending
+            });
+            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → reordenados ${validData.length} fragmentos`);
+        }
+        // --------------------------------------------------------------------------
+
         const isLiteralMatch =
             /(qué\s+dice|texto\s+literal|transcribe|copia)\s+.*(art(?:í|i)culo|art\.)\s*\d+/i.test(
                 question
