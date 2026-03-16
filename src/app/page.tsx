@@ -1,5 +1,13 @@
 "use client";
 
+// Strips internal fragmentation markers (e.g. "[Bloque 6]", "[Bloque 12]") that
+// must never be shown to end-users. The legal reference itself is preserved.
+function cleanCitation(text: string): string {
+    if (!text) return text;
+    // Remove " [Bloque N]" patterns (space + bracket), trimming any trailing space
+    return text.replace(/\s*\[Bloque\s+\d+\]/gi, '').trim();
+}
+
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import ThreePanelLayout from '@/components/Layout/ThreePanelLayout';
@@ -128,13 +136,15 @@ export default function Home() {
                         .filter((text: string) => text.length > 0);
 
                     // Use the RAG answer from the backend if available, fallback to first cleaned fragment
-                    const combinedText = json.answer ? json.answer : cleanedFragments.slice(0, 1).join("\n\n");
+                    // Also strip any internal [Bloque N] references the LLM may have echoed
+                    const rawText = json.answer ? json.answer : cleanedFragments.slice(0, 1).join("\n\n");
+                    const combinedText = cleanCitation(rawText);
 
-                    // Create citations
+                    // Create citations (strip internal block markers)
                     const citations = (json.data || []).map((item: any, index: number) => ({
                         id: item.id ? String(item.id) : `cit-${index}`,
                         sourceId: item.id ? String(item.id) : `src-${index}`,
-                        text: item.seccion || `Fragmento ${index + 1}`
+                        text: cleanCitation(item.seccion || `Fragmento ${index + 1}`)
                     }));
 
                     newResponse = {
@@ -178,12 +188,12 @@ export default function Home() {
                             sourceTitle = item.normas.titulo;
                         }
 
-                        // 2) Subtitle logic (Artículo or Sección)
+                        // 2) Subtitle logic (Artículo or Sección) — strip internal block markers
                         let sourceSubtitle = "";
                         if (item.articulo) {
-                            sourceSubtitle = item.articulo;
+                            sourceSubtitle = cleanCitation(item.articulo);
                         } else if (item.seccion) {
-                            sourceSubtitle = item.seccion;
+                            sourceSubtitle = cleanCitation(item.seccion);
                         } else if (item.tipo && item.numero) {
                             sourceSubtitle = `${item.tipo} ${item.numero}`;
                         } else {
