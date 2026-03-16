@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
 import { ChevronDown, Search } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ResponseData } from '@/lib/types';
+import { ResponseData, Source } from '@/lib/types';
 
 
 
@@ -12,13 +12,14 @@ interface QueryPanelProps {
     isLoading: boolean;
     onQuery: (text: string) => void;
     onCitationClick: (sourceId: string) => void;
-    normas: Array<{ id: number, titulo: string }>;
+    normas: Array<{ id: number, titulo: string, codigo: string }>;
     selectedNormaId: number | null;
     onSelectNormaId: (id: number | null) => void;
     error?: string | null;
+    sources?: Source[];
 }
 
-export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId }: QueryPanelProps) {
+export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId, sources = [] }: QueryPanelProps) {
     const [text, setText] = useState(query);
 
     // Sync local state when prop changes (restoring history)
@@ -37,27 +38,23 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
     return (
         <div className={styles.container}>
             <div className={styles.topBar}>
-                <div className={styles.dropdownWrapper}>
-                    <select
-                        className={styles.dropdownSelect}
-                        value={selectedNormaId === null ? "" : selectedNormaId}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            if (!val) {
-                                onSelectNormaId(null);
-                            } else {
-                                onSelectNormaId(Number(val));
-                            }
-                        }}
+                <div className={styles.chipsRow}>
+                    <button
+                        className={`${styles.chip} ${selectedNormaId === null ? styles.chipActive : ''}`}
+                        onClick={() => onSelectNormaId(null)}
                     >
-                        <option value="">Todas las normas</option>
-                        {normas.map(norma => (
-                            <option key={norma.id} value={norma.id}>
-                                {norma.titulo}
-                            </option>
-                        ))}
-                    </select>
-                    <ChevronDown size={16} className={styles.dropdownIcon} />
+                        Todas
+                    </button>
+                    {normas.map(norma => (
+                        <button
+                            key={norma.id}
+                            className={`${styles.chip} ${selectedNormaId === norma.id ? styles.chipActive : ''}`}
+                            onClick={() => onSelectNormaId(norma.id)}
+                            title={norma.titulo}
+                        >
+                            {norma.codigo || norma.titulo}
+                        </button>
+                    ))}
                 </div>
 
                 <div className={styles.userProfile}>
@@ -114,7 +111,6 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     // --- Parse structured LLM response into sections ---
                     const text = response.text || '';
 
-                    // Extract each labelled section from the LLM output
                     const extract = (label: string) => {
                         const regex = new RegExp(
                             `${label}:\\s*\\n?([\\s\\S]*?)(?=\\n(?:Respuesta breve|Fundamento normativo|Cita):|$)`,
@@ -123,17 +119,31 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                         return text.match(regex)?.[1]?.trim() ?? '';
                     };
 
-                    const respuestaBreve     = extract('Respuesta breve');
+                    const respuestaBreve      = extract('Respuesta breve');
                     const fundamentoNormativo = extract('Fundamento normativo');
                     const cita               = extract('Cita');
                     const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
 
-                    // Badge: show selected norma code if one is pinned
-                    const selectedNorma = selectedNormaId !== null
-                        ? normas.find(n => n.id === selectedNormaId)
-                        : null;
+                    // --- Group sources by norma for Fuentes jurídicas ---
+                    const normaGroups = new Map<string, { normaTitle: string; articles: Source[] }>();
+                    for (const src of sources) {
+                        const key = src.normaId != null ? String(src.normaId) : src.title;
+                        if (!normaGroups.has(key)) {
+                            normaGroups.set(key, { normaTitle: src.title, articles: [] });
+                        }
+                        normaGroups.get(key)!.articles.push(src);
+                    }
 
-                    // Render a [Artículo X] / [Bloque…] citation as a styled chip
+                    // Badge: show selected norma, OR the primary detected norma from sources
+                    let displayedNormaTitle: string | null = null;
+                    if (selectedNormaId !== null) {
+                        const sn = normas.find(n => n.id === selectedNormaId);
+                        if (sn) displayedNormaTitle = sn.codigo || sn.titulo;
+                    } else if (sources.length > 0) {
+                        // Global search: show the highest scoring norma
+                        displayedNormaTitle = sources[0].title;
+                    }
+
                     const renderCitations = (raw: string) =>
                         raw.split('\n').filter(l => l.trim()).map((line, i) => (
                             <div key={i} className={styles.citaLine}>
@@ -141,14 +151,40 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                             </div>
                         ));
 
+                    // --- Highlight search terms in text ---
+                    const highlightString = (textStr: string, queryStr: string) => {
+                        if (!queryStr || !textStr) return textStr;
+                        const stopwords = new Set([
+                            'para', 'como', 'sobre', 'entre', 'hasta', 'desde', 'este', 'esta', 'estos', 'estas',
+                            'esos', 'esas', 'aquel', 'aquella', 'pero', 'sino', 'porque', 'cuando', 'donde', 'quien',
+                            'cual', 'cuales', 'tiene', 'tienen', 'debe', 'deben', 'puede', 'pueden', 'ser', 'estar'
+                        ]);
+                        // Extract valid words from query
+                        const words = queryStr.toLowerCase()
+                            .split(/[^a-záéíóúñü]+/i)
+                            .filter(w => w.length > 3 && !stopwords.has(w));
+                        
+                        if (words.length === 0) return textStr;
+
+                        const regex = new RegExp(`(${words.join('|')})`, 'gi');
+                        const parts = textStr.split(regex);
+                        
+                        return (
+                            <>
+                                {parts.map((part, i) => 
+                                    regex.test(part) 
+                                        ? <mark key={i} style={{ backgroundColor: '#fef08a', padding: '0 2px', borderRadius: '2px', color: 'inherit' }}>{part}</mark> 
+                                        : <React.Fragment key={i}>{part}</React.Fragment>
+                                )}
+                            </>
+                        );
+                    };
+
                     return (
                         <div className={styles.responseSection}>
-                            {/* Norma badge */}
-                            {selectedNorma && (
+                            {displayedNormaTitle && (
                                 <div className={styles.normaBadgeRow}>
-                                    <span className={styles.normaBadge}>
-                                        {selectedNorma.titulo}
-                                    </span>
+                                    <span className={styles.normaBadge}>{displayedNormaTitle}</span>
                                 </div>
                             )}
 
@@ -166,7 +202,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                         {fundamentoNormativo && (
                                             <div className={styles.responseBlock}>
                                                 <div className={styles.blockLabel}>Fundamento normativo</div>
-                                                <p className={styles.blockText}>{fundamentoNormativo}</p>
+                                                <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
                                             </div>
                                         )}
                                         {cita && (
@@ -179,7 +215,6 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                         )}
                                     </div>
                                 ) : (
-                                    // Fallback: plain paragraphs for unstructured text
                                     <div className={styles.responseText}>
                                         {text.split('\n\n').map((paragraph, i) => (
                                             <p key={i}>{paragraph}</p>
@@ -187,6 +222,30 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                     </div>
                                 )}
                             </div>
+
+                            {/* Fuentes jurídicas */}
+                            {normaGroups.size > 0 && (
+                                <div className={styles.fuentesCard}>
+                                    <div className={styles.fuentesTitle}>Fuentes jurídicas</div>
+                                    {Array.from(normaGroups.values()).map(({ normaTitle, articles }) => (
+                                        <div key={normaTitle} className={styles.fuentesGroup}>
+                                            <div className={styles.fuentesNorma}>{normaTitle}</div>
+                                            <ul className={styles.fuentesList}>
+                                                {articles.map(src => (
+                                                    <li key={src.id}>
+                                                        <button
+                                                            className={styles.fuentesItem}
+                                                            onClick={() => onCitationClick(src.id)}
+                                                        >
+                                                            {src.subtitle || src.title}
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

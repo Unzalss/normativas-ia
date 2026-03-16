@@ -13,7 +13,7 @@ export async function GET() {
 
         const { data, error } = await supabase
             .from("normas")
-            .select("id, titulo")
+            .select("id, titulo, codigo")
             .order("id");
 
         if (error) throw error;

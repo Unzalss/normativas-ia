@@ -33,7 +33,7 @@ export default function Home() {
     const [sources, setSources] = useState<Source[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [normas, setNormas] = useState<{ id: number, titulo: string }[]>([]);
+    const [normas, setNormas] = useState<{ id: number, titulo: string, codigo: string }[]>([]);
     const [selectedNormaId, setSelectedNormaId] = useState<number | null>(null);
 
     useEffect(() => {
@@ -278,10 +278,12 @@ export default function Home() {
                     normas={normas}
                     selectedNormaId={selectedNormaId}
                     onSelectNormaId={setSelectedNormaId}
+                    sources={sources}
                 />
             }
             rightPanel={
                 <SourcesPanel
+                    query={currentQuery}
                     sources={sources}
                     selectedSourceId={selectedSourceId}
                     onSelectSource={setSelectedSourceId}

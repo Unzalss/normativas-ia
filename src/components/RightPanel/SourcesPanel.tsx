@@ -7,13 +7,14 @@ import { Source } from '@/lib/types';
 import { clsx } from 'clsx';
 
 interface SourcesPanelProps {
+    query?: string;
     sources: Source[];
     selectedSourceId: string | null;
     onSelectSource: (id: string) => void;
     onCloseSource?: () => void;
 }
 
-export default function SourcesPanel({ sources, selectedSourceId, onSelectSource, onCloseSource }: SourcesPanelProps) {
+export default function SourcesPanel({ query = '', sources, selectedSourceId, onSelectSource, onCloseSource }: SourcesPanelProps) {
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
     const toggleGroup = (key: string) => {
@@ -97,6 +98,35 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
         return result;
     }, [sources, expandedGroups]);
 
+    // --- Highlight search terms in text ---
+    const highlightString = (textStr: string, queryStr: string) => {
+        if (!queryStr || !textStr) return <>{textStr}</>;
+        const stopwords = new Set([
+            'para', 'como', 'sobre', 'entre', 'hasta', 'desde', 'este', 'esta', 'estos', 'estas',
+            'esos', 'esas', 'aquel', 'aquella', 'pero', 'sino', 'porque', 'cuando', 'donde', 'quien',
+            'cual', 'cuales', 'tiene', 'tienen', 'debe', 'deben', 'puede', 'pueden', 'ser', 'estar'
+        ]);
+        // Extract valid words from query
+        const words = queryStr.toLowerCase()
+            .split(/[^a-záéíóúñü]+/i)
+            .filter(w => w.length > 3 && !stopwords.has(w));
+        
+        if (words.length === 0) return <>{textStr}</>;
+
+        const regex = new RegExp(`(${words.join('|')})`, 'gi');
+        const parts = textStr.split(regex);
+        
+        return (
+            <>
+                {parts.map((part, i) => 
+                    regex.test(part) 
+                        ? <mark key={i} style={{ backgroundColor: '#fef08a', padding: '0 2px', borderRadius: '2px', color: 'inherit' }}>{part}</mark> 
+                        : <React.Fragment key={i}>{part}</React.Fragment>
+                )}
+            </>
+        );
+    };
+
     return (
         <div className={styles.container}>
             <div className={styles.header}>
@@ -179,7 +209,7 @@ export default function SourcesPanel({ sources, selectedSourceId, onSelectSource
                                                         </div>
                                                     )}
                                                     <div className={styles.detailContent}>
-                                                        {source.content}
+                                                        {highlightString(source.content, query)}
                                                     </div>
                                                 </div>
                                             )}
