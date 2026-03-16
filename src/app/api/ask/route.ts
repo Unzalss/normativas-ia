@@ -197,6 +197,10 @@ export async function POST(req: Request) {
                     keywords: ["industrial", "industria", "establecimiento industrial"],
                     codigo: "RSCIEI",
                 },
+                {
+                    keywords: ["resbaladicidad", "resbalamiento", "resbalen", "resbal"],
+                    codigo: "CTE-DB-SUA",
+                },
             ];
 
             for (const rule of buildingTypeRules) {
