@@ -302,7 +302,32 @@ export async function POST(req: Request) {
 
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
-        if (!validData.length || !hasEnoughEvidence) {
+        // --- Article-number detection (hoisted before evidence gate) ---------------
+        // Detect explicit article mentions like "artículo 5", "art. 17", "art 3"
+        const articuloMencionadoMatch = question.match(
+            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
+        );
+        const articuloMencionado = articuloMencionadoMatch
+            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
+            : null;
+
+        // If a specific article is mentioned AND at least one recovered fragment
+        // contains it in seccion, bypass the evidence gate — the article is present,
+        // we just need to return it. Embedding similarity can be low for name-based queries.
+        const articuloRegex = articuloMencionado
+            ? new RegExp(`\\b${articuloMencionado}\\b`)
+            : null;
+        const articuloFoundInFragments = articuloRegex
+            ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))
+            : false;
+
+        const bypassEvidence = articuloFoundInFragments && validData.length >= 1;
+
+        debugInfo.articuloMencionado = articuloMencionado;
+        debugInfo.articuloFoundInFragments = articuloFoundInFragments;
+        debugInfo.bypassEvidence = bypassEvidence;
+
+        if (!validData.length || (!hasEnoughEvidence && !bypassEvidence)) {
             return NextResponse.json({
                 ok: true,
                 answer: "No consta en las normas consultadas.",
@@ -312,28 +337,17 @@ export async function POST(req: Request) {
             });
         }
 
-        // --- Article-number boost --------------------------------------------------
-        // Detect explicit article mentions like "artículo 5", "art. 17", "art 3"
-        const articuloMencionadoMatch = question.match(
-            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
-        );
-        const articuloMencionado = articuloMencionadoMatch
-            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
-            : null;
-
-        if (articuloMencionado) {
-            // Only `seccion` and `tipo` are real fields projected by the RPC.
-            // seccion typically contains "Artículo 5" or "Art. 5.1" as stored at ingest time.
+        // --- Article-number boost -------------------------------------------------
+        // Re-sort so fragments matching the mentioned article float to the top
+        if (articuloMencionado && articuloRegex) {
             validData.sort((a: any, b: any) => {
-                const seccionA = String(a.seccion || "");
-                const seccionB = String(b.seccion || "");
-                const matchA = new RegExp(`\\b${articuloMencionado}\\b`).test(seccionA);
-                const matchB = new RegExp(`\\b${articuloMencionado}\\b`).test(seccionB);
+                const matchA = articuloRegex.test(String(a.seccion || ""));
+                const matchB = articuloRegex.test(String(b.seccion || ""));
                 if (matchA && !matchB) return -1;
                 if (!matchA && matchB) return 1;
                 return getScore(b) - getScore(a); // fallback: score descending
             });
-            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → reordenados ${validData.length} fragmentos`);
+            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → reordenados ${validData.length} fragmentos (found=${articuloFoundInFragments})`);
         }
         // --------------------------------------------------------------------------
 
