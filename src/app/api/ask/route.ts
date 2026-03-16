@@ -267,9 +267,11 @@ export async function POST(req: Request) {
             return 0;
         };
 
-        console.log(
-            `[HYBRID SEARCH] Ejecutando búsqueda híbrida. Filtro norma: ${parsedNormaId ?? "TODAS"} | Pregunta: ${question.substring(0, 50)}...`
-        );
+        // --- Debug: full detection trace ---
+        console.log(`[ASK] Pregunta: "${question}"`);
+        console.log(`[ASK] parsedNormaId FINAL antes de RPC: ${parsedNormaId ?? "null (búsqueda global)"}`);
+        console.log(`[ASK] detectedNormaCodigo=${detectedNormaCodigo ?? "null"} | detectedMateria=${detectedMateria ?? "null"}`);
+        console.log(`[HYBRID SEARCH] Filtro norma: ${parsedNormaId ?? "TODAS"} | Pregunta: ${question.substring(0, 60)}...`);
 
         const safeK = Number.isInteger(Number(k)) && Number(k) > 0 ? Number(k) : K_GLOBAL;
 
@@ -324,11 +326,12 @@ export async function POST(req: Request) {
 
         const rawData = data || [];
         debugInfo.rowsLength = rawData.length;
-        console.log(`Filas devueltas por Hybrid Search: ${rawData.length}`);
+        console.log(`[ASK] Filas brutas de RPC: ${rawData.length}`);
 
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
         );
+        console.log(`[ASK] Fragmentos válidos tras filtro: ${validData.length}`);
 
         let bestScore = 0;
         let strongCount = 0;
@@ -344,6 +347,7 @@ export async function POST(req: Request) {
         debugInfo.bestScore = bestScore;
         debugInfo.strongCount = strongCount;
         debugInfo.mediumCount = mediumCount;
+        console.log(`[ASK] Scores → best=${bestScore.toFixed(3)} | strong(≥0.7)=${strongCount} | medium(≥0.5)=${mediumCount}`);
 
         const hasEnoughEvidence =
             validData.length >= 2 && bestScore >= 0.55 && (strongCount >= 1 || mediumCount >= 2);
@@ -351,7 +355,6 @@ export async function POST(req: Request) {
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
         // --- Article-number detection (hoisted before evidence gate) ---------------
-        // Detect explicit article mentions like "artículo 5", "art. 17", "art 3"
         const articuloMencionadoMatch = question.match(
             /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
         );
@@ -359,9 +362,6 @@ export async function POST(req: Request) {
             ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
             : null;
 
-        // If a specific article is mentioned AND at least one recovered fragment
-        // contains it in seccion, bypass the evidence gate — the article is present,
-        // we just need to return it. Embedding similarity can be low for name-based queries.
         const articuloRegex = articuloMencionado
             ? new RegExp(`\\b${articuloMencionado}\\b`)
             : null;
@@ -369,13 +369,23 @@ export async function POST(req: Request) {
             ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))
             : false;
 
-        const bypassEvidence = articuloFoundInFragments && validData.length >= 1;
+        // Bypass also when a keyword rule already pinned the norma and the RPC
+        // returned fragments — embedding similarity is low for keyword-based queries,
+        // not because the content is absent.
+        const keywordRulePinned = parsedNormaId !== null && validData.length >= 1;
+
+        const bypassEvidence =
+            (articuloFoundInFragments && validData.length >= 1) ||
+            keywordRulePinned;
 
         debugInfo.articuloMencionado = articuloMencionado;
         debugInfo.articuloFoundInFragments = articuloFoundInFragments;
+        debugInfo.keywordRulePinned = keywordRulePinned;
         debugInfo.bypassEvidence = bypassEvidence;
+        console.log(`[ASK] hasEnoughEvidence=${hasEnoughEvidence} | keywordRulePinned=${keywordRulePinned} | bypassEvidence=${bypassEvidence}`);
 
         if (!validData.length || (!hasEnoughEvidence && !bypassEvidence)) {
+            console.log(`[ASK] → Devolviendo "No consta" (validData.length=${validData.length})`);
             return NextResponse.json({
                 ok: true,
                 answer: "No consta en las normas consultadas.",
@@ -384,6 +394,7 @@ export async function POST(req: Request) {
                 ...(xDebug && { debug: debugInfo }),
             });
         }
+        console.log(`[ASK] → Continuando con ${validData.length} fragmentos (bypass=${bypassEvidence})`);
 
         // --- Article-number boost -------------------------------------------------
         // Re-sort so fragments matching the mentioned article float to the top
