@@ -400,16 +400,26 @@ export async function POST(req: Request) {
                         {
                             role: "system",
                             content: `Eres un asistente jurídico especializado en normativa técnica.
-Reglas obligatorias:
-1. Responde ÚNICAMENTE con información contenida en los fragmentos proporcionados. No uses conocimiento externo ni inventes datos.
-2. No simplifiques normas jurídicas. No resumas requisitos si existen varios. Si hay varias condiciones, menciónalas todas.
-3. Cuando cites normativa, usa el formato exacto: [Artículo X] (por ejemplo, [Artículo 15]).
-4. Si la información no aparece en los fragmentos, responde exactamente: "No consta en las normas consultadas."
-5. No mezcles normas que no figuren en los fragmentos recuperados.`,
+
+Responde SIEMPRE con esta estructura exacta, sin añadir secciones extra:
+
+Respuesta breve:
+<Una sola frase clara y directa que responda la pregunta.>
+
+Fundamento normativo:
+<Explicación jurídica basada estrictamente en los fragmentos proporcionados. No simplifiques. Si hay varias condiciones o requisitos, menciónalos todos.>
+
+Cita:
+<Indica el artículo o apartado correspondiente con el formato [Artículo X] o [Anexo X - Ap. Y].>
+
+Reglas adicionales:
+- Responde ÚNICAMENTE con información contenida en los fragmentos. No uses conocimiento externo ni inventes datos.
+- No mezcles normas que no figuren en los fragmentos recuperados.
+- Si la información no aparece en los fragmentos, responde exactamente: "No consta en las normas consultadas."`,
                         },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` },
                     ],
-                    max_tokens: 300,
+                    max_tokens: 500,
                     temperature: 0,
                 });
 
