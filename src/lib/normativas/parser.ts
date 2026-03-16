@@ -141,17 +141,25 @@ export function parseNormaJuridica(text: string, _metadata: NormaMetadataBase): 
 // Wrapper para aplicar la subdivisión semántica a fragmentos demasiado largos (> 800 char)
 function pushSplitFragments(fragments: ParsedFragment[], template: ParsedFragment) {
     const rawText = template.texto;
+
+    // Base label: section title without internal block marker (e.g. "Artículo 5")
+    const baseLabel = template.seccion.replace(/\s*\[Bloque\s+\d+\]/gi, '').trim();
+
     if (rawText.length > 800) {
         const chunks = splitTextWithOverlap(rawText, 800, 120);
         chunks.forEach((chunk, i) => {
+            // Prepend the article/section header so every stored fragment is self-contained
+            const labelledText = baseLabel ? `${baseLabel}\n${chunk}` : chunk;
             fragments.push({
                 ...template,
                 seccion: chunks.length > 1 ? `${template.seccion} [Bloque ${i + 1}]` : template.seccion,
-                texto: chunk
+                texto: labelledText
             });
         });
     } else {
-        fragments.push(template);
+        // Single fragment: also prepend header for consistency
+        const labelledText = baseLabel ? `${baseLabel}\n${rawText}` : rawText;
+        fragments.push({ ...template, texto: labelledText });
     }
 }
 
