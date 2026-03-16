@@ -182,6 +182,50 @@ export async function POST(req: Request) {
             }
         }
 
+        // --- Priorización por tipo de edificio ------------------------------------
+        // Solo si ninguna detección previa ha fijado ya parsedNormaId
+        if (!parsedNormaId) {
+            const qLower = question.toLowerCase();
+
+            // Palabras clave → código de norma a buscar
+            const buildingTypeRules: Array<{ keywords: string[]; codigo: string }> = [
+                {
+                    keywords: ["edificio", "edificios", "vivienda", "residencial"],
+                    codigo: "CTE-DB-SI",
+                },
+                {
+                    keywords: ["industrial", "industria", "establecimiento industrial"],
+                    codigo: "RSCIEI",
+                },
+            ];
+
+            for (const rule of buildingTypeRules) {
+                const matched = rule.keywords.some((kw) => qLower.includes(kw));
+                if (matched) {
+                    let btQuery = supabase
+                        .from("normas")
+                        .select("id, owner_user_id")
+                        .ilike("codigo", rule.codigo)
+                        .limit(1);
+
+                    if (userId) {
+                        btQuery = btQuery.or(`owner_user_id.is.null,owner_user_id.eq.${userId}`);
+                    } else {
+                        btQuery = btQuery.is("owner_user_id", null);
+                    }
+
+                    const { data: btNorma } = await btQuery.maybeSingle();
+
+                    if (btNorma?.id) {
+                        parsedNormaId = btNorma.id;
+                        console.log(`[BUILDING-TYPE] "${rule.codigo}" priorizado por keyword en pregunta`);
+                        break;
+                    }
+                }
+            }
+        }
+        // --------------------------------------------------------------------------
+
         const debugInfo: any = {
             normaCodigoRecibido: normaCodigo,
             normaIdResuelto: parsedNormaId,
