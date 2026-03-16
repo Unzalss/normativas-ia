@@ -231,9 +231,12 @@ export async function POST(req: Request) {
         const rpcParams: any = {
             q_embedding,
             q_text: question,
-            q_norma_id: validNormaId,
             k: safeK,
         };
+
+        if (validNormaId !== null) {
+            rpcParams.q_norma_id = validNormaId;
+        }
 
         let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
 
