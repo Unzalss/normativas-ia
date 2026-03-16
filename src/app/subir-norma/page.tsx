@@ -9,44 +9,18 @@ export default function SubirNormaPage() {
     const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
     const [similarMatches, setSimilarMatches] = useState<any[]>([]);
 
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+    // Core upload logic — shared by normal submit and "Subir igualmente" confirmation
+    const doUpload = async (formData: FormData) => {
+        console.log('[doUpload] Iniciando subida real con formData');
         setStatus('loading');
         setResult(null);
 
         try {
-            const formData = e ? new FormData(e.currentTarget) : pendingFormData;
-            if (!formData) return;
-
             const file = formData.get("file") as File;
             if (!file || file.size === 0) {
                 throw new Error("Debes seleccionar un archivo.");
             }
 
-            // --- PASO 1: COMPROBACIÓN POSTERIOR DE NORMAS PARECIDAS ---
-            // Solo probamos si venimos de un FormEvent original (no de una confirmación de advertencia)
-            if (e && status !== 'similar_warning') {
-                const codigo = formData.get("codigo") as string;
-                const titulo = formData.get("titulo") as string;
-
-                const checkRes = await fetch('/api/check-similar-normas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ codigo, titulo })
-                });
-
-                if (checkRes.ok) {
-                    const checkJson = await checkRes.json();
-                    if (checkJson.matches && checkJson.matches.length > 0) {
-                        setPendingFormData(formData);
-                        setSimilarMatches(checkJson.matches);
-                        setStatus('similar_warning');
-                        return; // Frenamos la subida para que el usuario decida
-                    }
-                }
-            }
-
-            // --- PASO 2: INGESTIÓN DEFINITIVA ---
             const supabase = createClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -91,14 +65,50 @@ export default function SubirNormaPage() {
             setStatus('success');
             setResult(json);
         } catch (error: any) {
-            console.error("Error al enviar norma:", error);
+            console.error('[doUpload] Error al enviar norma:', error);
             setStatus('error');
             setResult({ error: error.message });
         }
     };
 
-    const handleConfirmUpload = () => {
-        handleSubmit(undefined as any); // Continuamos con el formData guardado en pendiente
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        console.log('[handleSubmit] Formulario enviado');
+        e.preventDefault();
+        setResult(null);
+
+        const formData = new FormData(e.currentTarget);
+
+        // Check for similar normas before uploading
+        const codigo = formData.get("codigo") as string;
+        const titulo = formData.get("titulo") as string;
+
+        try {
+            const checkRes = await fetch('/api/check-similar-normas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ codigo, titulo })
+            });
+
+            if (checkRes.ok) {
+                const checkJson = await checkRes.json();
+                if (checkJson.matches && checkJson.matches.length > 0) {
+                    setPendingFormData(formData);
+                    setSimilarMatches(checkJson.matches);
+                    setStatus('similar_warning');
+                    return; // Pause — let user decide
+                }
+            }
+        } catch {
+            // If the similarity check fails, proceed with upload anyway
+        }
+
+        await doUpload(formData);
+    };
+
+    const handleConfirmUpload = async () => {
+        console.log('[handleConfirmUpload] Usuario confirmó subida igualmente');
+        if (!pendingFormData) return;
+        await doUpload(pendingFormData);
     };
 
     const handleCancelUpload = () => {
