@@ -225,15 +225,15 @@ export async function POST(req: Request) {
 
         const safeK = Number.isInteger(Number(k)) && Number(k) > 0 ? Number(k) : K_GLOBAL;
 
+        // Limpieza absoluta para Postgres: sólo null o integer, nunca string vacío
+        const validNormaId = typeof parsedNormaId === "number" && Number.isInteger(parsedNormaId) ? parsedNormaId : null;
+
         const rpcParams: any = {
             q_embedding,
             q_text: question,
+            q_norma_id: validNormaId,
             k: safeK,
         };
-
-        if (parsedNormaId !== null) {
-            rpcParams.q_norma_id = parsedNormaId;
-        }
 
         let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
 

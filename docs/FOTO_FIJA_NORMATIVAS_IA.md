@@ -142,13 +142,10 @@ Esto evita mezclar normativa distinta.
 
 # 5. Normas cargadas actualmente
 
-| id | código | norma |
-|---|---|---|
-| 1 | RD 505/2007 | Real Decreto 505/2007 |
-| 2 | ZAR-PPCI | Ordenanza Municipal de Protección Contra Incendios de Zaragoza |
-| 7 | RD 393/2007 | Real Decreto 393/2007 |
-| 8 | RDL 8/2015 | Texto Refundido de la Ley de Suelo |
-| 9 | RD 390/2021 | Certificación Energética de Edificios |
+id	código	norma
+15	RSCIEI	Reglamento de seguridad contra incendios en establecimientos industriales
+16	RIPCI	Reglamento de instalaciones de protección contra incendios
+17	CTE-DB-SI	Código Técnico de la Edificación — Documento Básico SI Seguridad en caso de incendio
 
 ---
 
@@ -315,16 +312,21 @@ Función:
 
 buscar_norma_partes
 
-Responsabilidades:
+Estado actual real:
 
-- vector search
-- lexical search
-- ranking híbrido
-- exclusión de índices
-- filtros de vigencia
+se probó una versión híbrida con ajustes SQL en Supabase
 
-Esta RPC **no debe rehacerse salvo necesidad real**.
+hubo conflictos por sobrecarga de firmas de la RPC
 
+se eliminaron funciones duplicadas y se recreó una versión única
+
+la RPC responde y devuelve resultados
+
+el ranking todavía necesita ajuste fino para priorizar correctamente CTE-DB-SI frente a RSCIEI en algunos casos
+
+Conclusión:
+
+La RPC sigue siendo la función principal, pero su ranking híbrido no se considera cerrado todavía.
 ---
 
 # 12. Modelo actual de acceso a normas
@@ -386,13 +388,23 @@ Estas decisiones **no deben reabrirse salvo motivo técnico grave**.
 
 # 16. Problemas conocidos aún pendientes
 
-1. afinar conteo exacto de artículos y anexos  
-2. ampliar priorización por materia  
-3. mejorar citas jurídicas en respuestas  
-4. revisión manual de ingestión  
-5. visibilidad avanzada de normas  
-6. subida automática desde BOE  
-7. gestión avanzada de versiones de normas  
+afinar ranking híbrido entre normas cargadas
+
+priorizar mejor CTE-DB-SI cuando se menciona explícitamente
+
+revisar por qué algunas consultas del CTE devuelven RSCIEI como fuente principal
+
+estabilizar definitivamente /api/ask tras cambios recientes
+
+ampliar priorización por materia
+
+mejorar citas jurídicas en respuestas
+
+revisión manual de ingestión
+
+subida automática desde BOE
+
+gestión avanzada de versiones de normas
 
 ---
 
@@ -602,26 +614,29 @@ sin necesidad de joins complejos en el backend.
 
 El sistema actual ya tiene:
 
-✔ ingestión automática de normas  
-✔ fragmentación jurídica  
-✔ embeddings vectoriales  
-✔ RAG funcional  
-✔ filtrado por norma  
-✔ priorización dinámica por materia  
-✔ control de alucinaciones  
-✔ estructura para relaciones normativas  
-✔ estructura para control de vigencia  
+✔ ingestión automática de normas
+✔ fragmentación jurídica mejorada
+✔ embeddings vectoriales
+✔ RAG funcional
+✔ filtrado por norma
+✔ priorización dinámica por materia
+✔ control de alucinaciones
+✔ estructura para relaciones normativas
+✔ estructura para control de vigencia
 ✔ vista vw_normas_vigencia para consultas de vigencia
+✔ normas reales cargadas: RSCIEI, RIPCI, CTE-DB-SI
 
-El buscador ya puede considerarse **funcional como MVP técnico**.
+Estado real del buscador:
 
-Las siguientes mejoras se centran en:
+RSCIEI: validado y funcionando
 
-- rendimiento de búsqueda
-- automatización de metadata
-- detección automática de relaciones
-- mejora UX de subida de normas
+RIPCI: validado y funcionando
 
+CTE-DB-SI: cargado e indexado, pero con priorización todavía inestable en búsqueda global
+
+Conclusión:
+
+El sistema puede considerarse MVP técnico funcional parcial, pendiente de cerrar la estabilidad del ranking híbrido en consultas cruzadas.
 ---
 
 
@@ -689,78 +704,55 @@ Esto permite que la norma se integre automáticamente en el sistema de priorizac
 
 25. Próximos pasos inmediatos del proyecto
 
-El sistema ya funciona como MVP técnico funcional, pero quedan tres pasos clave antes de escalar el producto.
+Cerrar estabilidad del buscador híbrido
 
-1. Probar subida completa de una norma
+corregir priorización entre RSCIEI / RIPCI / CTE-DB-SI
 
-Subir una nueva norma real para validar:
+asegurar que menciones explícitas a una norma prioricen esa norma
 
-detección automática de metadata
+Validar búsquedas reales mínimas
 
-generación automática de keywords
+ocupación en CTE-DB-SI
 
-integración en el buscador
+salidas en CTE-DB-SI
 
-Norma prevista para test:
+detección en CTE-DB-SI
 
-RSCIEI — RD 164/2025
+mantenimiento/extintores en RIPCI
 
-Se debe comprobar:
+inspecciones en RSCIEI
 
-materia detectada
-submateria detectada
-keywords generadas
-funcionamiento del buscador sobre esa norma.
+26. Incidencia técnica reciente en /api/ask (NUEVO)
 
-2. Optimización de velocidad del buscador
+Durante la estabilización del buscador híbrido se detectaron varios problemas en producción:
 
-Actualmente el buscador es más lento de lo deseado.
+conflicto de firmas duplicadas en la RPC buscar_norma_partes
 
-Se debe optimizar:
+error por envío de q_norma_id = "" desde /api/ask
 
-consultas a normas
-consultas a normas_partes
-ranking híbrido
-tamaño del contexto enviado al LLM
+edición accidental corrupta de src/app/api/ask/route.ts
 
-Objetivo:
+necesidad de dejar una única versión limpia del endpoint
 
-reducir significativamente la latencia del buscador.
+Estado actual de esta incidencia:
 
-3. Detección automática de relaciones jurídicas entre normas
+la RPC fue limpiada y recreada en Supabase
 
-El sistema ya dispone de la estructura:
+route.ts fue corregido manualmente
 
-tabla normas_relaciones
-vista vw_normas_vigencia
+el backend sigue necesitando validación final de estabilidad en producción
 
-Falta implementar el pipeline que detecte automáticamente:
+Regla de trabajo a partir de ahora:
 
-derogaciones
-modificaciones
-remisiones entre normas
+no tocar más SQL ni /api/ask sin verificar primero el error exacto en Vercel Logs.
 
-Esto permitirá:
 
-explicar vigencia normativa
-mostrar relaciones entre normas
-detectar conflictos jurídicos.
 
-## Validación realizada
-
-Se realizaron pruebas manuales que confirmaron:
-
-✔ selector de norma funciona correctamente  
-✔ detección de norma en la pregunta funciona  
-✔ priorización por materia funciona  
-✔ no se mezclan normas incorrectas  
-✔ preguntas fuera de la norma devuelven  
-"No consta en las normas consultadas."
-
-Estado del sistema:
-
-FUNCIONANDO Y VALIDADO
-
----
+Estado real actual:
+- RSCIEI funciona
+- RIPCI funciona
+- CTE-DB-SI está cargado pero no siempre se prioriza bien
+- la RPC híbrida sigue viva pero no está cerrada del todo
+- el siguiente bloque de trabajo es estabilizar la priorización del CTE-DB-SI y validar 3 consultas clave antes de seguir
 
 # FIN DE FOTO FIJA
