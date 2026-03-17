@@ -42,49 +42,100 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
     const mapaNormativo = React.useMemo(() => {
         if (!sources || sources.length === 0) return [];
+
+        const citaText = response?.text ? (response.text.match(/Cita:\s*\n?([\s\S]*?)(?=\n(?:Respuesta breve|Fundamento normativo|Cita):|$)/i)?.[1]?.trim() || '') : '';
+        const citaContentNorm = citaText.toLowerCase();
+
         const grupos: Record<string, any> = {};
         
-        // Use order-based limiting: First 3 unique norms, then max 3 unique articles per norm
-        const maxNorms = 3;
-        const maxArticlesPerNorm = 3;
-        let normsCount = 0;
-        
-        for (const s of sources) {
-            const key = s.normaId ? String(s.normaId) : s.title;
+        // 1. Agrupar primero todas las fuentes sin cortes
+        sources.forEach((s, index) => {
+            // 2. Fallbacks elegantes si faltan IDs
+            const key = s.normaId ? String(s.normaId) : (s.title || 'norma-gen');
+            const tituloNorma = s.title || 'Documentación de referencia';
             
             if (!grupos[key]) {
-                if (normsCount >= maxNorms) continue;
                 grupos[key] = { 
                     key, 
-                    titulo: s.title, 
+                    titulo: tituloNorma, 
                     rango: s.metadata?.rango || null,
                     articulos: {},
-                    articlesCount: 0
+                    minIdx: index,
+                    totalFragments: 0,
+                    isCited: false
                 };
-                normsCount++;
             }
             
-            // Sub-grouping by Article
-            const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || `art-desconocido`;
+            if (index < grupos[key].minIdx) grupos[key].minIdx = index;
+            grupos[key].totalFragments++;
+            
+            // Fallback elegante para artículos
+            const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || `Fragmentos generales`;
+            const tituloArt = s.subtitle || artKey;
             
             if (!grupos[key].articulos[artKey]) {
-                if (grupos[key].articlesCount >= maxArticlesPerNorm) continue;
+                // 3. Comprobar si está citado en la respuesta
+                const isCited = citaContentNorm && (citaContentNorm.includes(tituloArt.toLowerCase()) || (s.metadata?.articulo && citaContentNorm.includes(s.metadata.articulo.toLowerCase())));
                 grupos[key].articulos[artKey] = {
                     key: artKey,
-                    titulo: s.subtitle || artKey,
-                    fragmentos: []
+                    titulo: tituloArt,
+                    fragmentos: [],
+                    minIdx: index,
+                    totalFragments: 0,
+                    isCited: !!isCited
                 };
-                grupos[key].articlesCount++;
+            }
+            
+            if (index < grupos[key].articulos[artKey].minIdx) grupos[key].articulos[artKey].minIdx = index;
+            grupos[key].articulos[artKey].totalFragments++;
+            if (grupos[key].articulos[artKey].isCited) {
+                grupos[key].isCited = true; // Si cita un artículo, la norma está citada
             }
             grupos[key].articulos[artKey].fragmentos.push(s);
+        });
+
+        // 4. Ordenar después de construir toda la estructura
+        let normasArray = Object.values(grupos).map(norma => {
+            let artsArray = Object.values(norma.articulos) as any[];
+            // Ordenar artículos: citado > minIdx > totalFragments
+            artsArray.sort((a, b) => {
+                if (a.isCited && !b.isCited) return -1;
+                if (!a.isCited && b.isCited) return 1;
+                if (a.minIdx !== b.minIdx) return a.minIdx - b.minIdx;
+                return b.totalFragments - a.totalFragments;
+            });
+            
+            return {
+                ...norma,
+                articulosList: artsArray
+            };
+        });
+
+        // Ordenar Normas: citado > minIdx > totalFragments
+        normasArray.sort((a, b) => {
+             if (a.isCited && !b.isCited) return -1;
+             if (!a.isCited && b.isCited) return 1;
+             if (a.minIdx !== b.minIdx) return a.minIdx - b.minIdx;
+             return b.totalFragments - a.totalFragments;
+        });
+
+        // 5. Solo al final truncar
+        const maxNorms = 3;
+        const maxArticlesPerNorm = 4;
+
+        if (normasArray.length > maxNorms) {
+            normasArray = normasArray.slice(0, maxNorms);
         }
 
-        // Convert the Record<> structures to iterable Arrays
-        return Object.values(grupos).map(norma => ({
-            ...norma,
-            articulosList: Object.values(norma.articulos)
-        }));
-    }, [sources]);
+        normasArray = normasArray.map(norma => {
+            if (norma.articulosList.length > maxArticlesPerNorm) {
+                 return { ...norma, articulosList: norma.articulosList.slice(0, maxArticlesPerNorm) };
+            }
+            return norma;
+        });
+
+        return normasArray;
+    }, [sources, response]);
 
     return (
         <div className={styles.container}>
