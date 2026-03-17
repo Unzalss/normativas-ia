@@ -43,28 +43,8 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
     const mapaNormativo = React.useMemo(() => {
         if (!sources || sources.length === 0) return [];
 
-        const citaText = response?.text ? (response.text.match(/Cita:\s*\n?([\s\S]*?)(?=\n(?:Respuesta breve|Fundamento normativo|Cita):|$)/i)?.[1]?.trim() || '') : '';
-        const citaContentNorm = citaText.toLowerCase();
-
-        // --- NEW: Pre-filter logic ---
-        const citadosSet = new Set<string>();
-        // First pass: identify which sources are actively cited
-        sources.forEach(s => {
-            const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || '';
-            const tituloArt = s.subtitle || artKey;
-            
-            if (tituloArt && citaContentNorm) {
-                const isCited = citaContentNorm.includes(tituloArt.toLowerCase()) || 
-                                (s.metadata?.articulo && citaContentNorm.includes(s.metadata.articulo.toLowerCase()));
-                if (isCited) citadosSet.add(s.id);
-            }
-        });
-
-        // Filter: Cited OR Top 5
-        const filteredSources = sources.filter((s, index) => citadosSet.has(s.id) || index < 5);
-        // Fallback: If filter is somehow empty (e.g. no citations and array was tiny anyway), use all.
-        const finalSources = filteredSources.length > 0 ? filteredSources : sources;
-        // -----------------------------
+        // Pre-filter: strictly top 5 sources
+        const finalSources = sources.slice(0, 5);
 
         const grupos: Record<string, any> = {};
         
@@ -81,8 +61,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     rango: s.metadata?.rango || null,
                     articulos: {},
                     minIdx: index,
-                    totalFragments: 0,
-                    isCited: false
+                    totalFragments: 0
                 };
             }
             
@@ -94,33 +73,25 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
             const tituloArt = s.subtitle || artKey;
             
             if (!grupos[key].articulos[artKey]) {
-                // 3. Comprobar si está citado en la respuesta
-                const isCited = citaContentNorm && (citaContentNorm.includes(tituloArt.toLowerCase()) || (s.metadata?.articulo && citaContentNorm.includes(s.metadata.articulo.toLowerCase())));
                 grupos[key].articulos[artKey] = {
                     key: artKey,
                     titulo: tituloArt,
                     fragmentos: [],
                     minIdx: index,
-                    totalFragments: 0,
-                    isCited: !!isCited
+                    totalFragments: 0
                 };
             }
             
             if (index < grupos[key].articulos[artKey].minIdx) grupos[key].articulos[artKey].minIdx = index;
             grupos[key].articulos[artKey].totalFragments++;
-            if (grupos[key].articulos[artKey].isCited) {
-                grupos[key].isCited = true; // Si cita un artículo, la norma está citada
-            }
             grupos[key].articulos[artKey].fragmentos.push(s);
         });
 
         // 4. Ordenar después de construir toda la estructura
         let normasArray = Object.values(grupos).map(norma => {
             let artsArray = Object.values(norma.articulos) as any[];
-            // Ordenar artículos: citado > minIdx > totalFragments
+            // Ordenar artículos: minIdx > totalFragments
             artsArray.sort((a, b) => {
-                if (a.isCited && !b.isCited) return -1;
-                if (!a.isCited && b.isCited) return 1;
                 if (a.minIdx !== b.minIdx) return a.minIdx - b.minIdx;
                 return b.totalFragments - a.totalFragments;
             });
@@ -131,10 +102,8 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
             };
         });
 
-        // Ordenar Normas: citado > minIdx > totalFragments
+        // Ordenar Normas: minIdx > totalFragments
         normasArray.sort((a, b) => {
-             if (a.isCited && !b.isCited) return -1;
-             if (!a.isCited && b.isCited) return 1;
              if (a.minIdx !== b.minIdx) return a.minIdx - b.minIdx;
              return b.totalFragments - a.totalFragments;
         });
