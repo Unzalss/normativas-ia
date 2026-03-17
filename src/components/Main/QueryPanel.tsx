@@ -38,23 +38,27 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
     return (
         <div className={styles.container}>
             <div className={styles.topBar}>
-                <div className={styles.chipsRow}>
-                    <button
-                        className={`${styles.chip} ${selectedNormaId === null ? styles.chipActive : ''}`}
-                        onClick={() => onSelectNormaId(null)}
+                <div className={styles.dropdownWrapper}>
+                    <select
+                        className={styles.dropdownSelect}
+                        value={selectedNormaId === null ? "" : selectedNormaId}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                                onSelectNormaId(null);
+                            } else {
+                                onSelectNormaId(Number(val));
+                            }
+                        }}
                     >
-                        Todas
-                    </button>
-                    {normas.map(norma => (
-                        <button
-                            key={norma.id}
-                            className={`${styles.chip} ${selectedNormaId === norma.id ? styles.chipActive : ''}`}
-                            onClick={() => onSelectNormaId(norma.id)}
-                            title={norma.titulo}
-                        >
-                            {norma.codigo || norma.titulo}
-                        </button>
-                    ))}
+                        <option value="">Todas las normas</option>
+                        {normas.map(norma => (
+                            <option key={norma.id} value={norma.id}>
+                                {norma.codigo || norma.titulo}
+                            </option>
+                        ))}
+                    </select>
+                    <ChevronDown size={16} className={styles.dropdownIcon} />
                 </div>
 
                 <div className={styles.userProfile}>
@@ -189,8 +193,6 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                             )}
 
                             <div className={styles.responseCard}>
-                                <h2 className={styles.responseTitle}>Respuesta</h2>
-
                                 {isStructured ? (
                                     <div className={styles.structuredBlocks}>
                                         {respuestaBreve && (

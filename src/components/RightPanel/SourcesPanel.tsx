@@ -180,15 +180,11 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                             >
                                                 <div className={styles.fragmentInfo}>
                                                     <div className={styles.fragmentTitle}>
-                                                        {source.articulo_detectado && source.titulo_articulo
-                                                            ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')} — ${source.titulo_articulo.toUpperCase()}`
-                                                            : source.articulo_detectado
-                                                                ? `ARTÍCULO ${source.articulo_detectado.replace(/art(í|i)culo\s+/i, '')}`
-                                                                : source.subtitle || "Fragmento"}
+                                                        {source.subtitle || "Fragmento"}
                                                     </div>
-                                                    {source.capitulo_detectado && source.capitulo_detectado.toUpperCase() !== source.subtitle?.toUpperCase() && (
-                                                        <div className={styles.capituloDetectadoTag} style={{ marginBottom: 0, marginTop: '4px' }}>
-                                                            {source.capitulo_detectado.toUpperCase()}
+                                                    {!isSelected && (
+                                                        <div className={styles.fragmentSnippet}>
+                                                            {source.content.substring(0, 100)}...
                                                         </div>
                                                     )}
                                                     <div className={styles.sourceMeta} style={{ marginTop: '4px' }}>

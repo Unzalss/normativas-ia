@@ -98,6 +98,18 @@
     color: var(--text-primary);
 }
 
+.fragmentSnippet {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 0.2rem;
+}
+
 .sourceInfo {
     flex: 1;
 }
@@ -150,28 +162,6 @@
     animation: slideDown 0.2s ease-out;
 }
 
-.articuloDetectadoTag {
-    display: inline-block;
-    background-color: #E0E7FF;
-    color: #4338CA;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.capituloDetectadoTag {
-    display: block;
-    color: #6B7280;
-    font-size: 0.7rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
 
 .highlightQuote {
     font-style: italic;
