@@ -638,6 +638,7 @@ Reglas adicionales:
             ok: true,
             answer: isNoInfo ? "No consta en las normas consultadas." : answer,
             data: isNoInfo ? [] : processedData,
+            sources: isNoInfo ? [] : processedData,
         };
 
         if (isNoInfo) {
@@ -651,7 +652,7 @@ Reglas adicionales:
 
         if (xDebug) okPayload.debug = debugInfo;
 
-        console.log("=== DEBUG FINAL RESPONSE ===");
+        console.log("=== DEBUG FINAL RESPONSE FIXED ===");
         console.log("final_response_keys:", Object.keys(okPayload || {}));
         console.log("final_response_sources_count:", okPayload?.sources?.length ?? null);
         console.log("final_response_sources:", okPayload?.sources ?? null);
