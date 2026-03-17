@@ -651,6 +651,11 @@ Reglas adicionales:
 
         if (xDebug) okPayload.debug = debugInfo;
 
+        console.log("=== DEBUG FINAL RESPONSE ===");
+        console.log("final_response_keys:", Object.keys(okPayload || {}));
+        console.log("final_response_sources_count:", okPayload?.sources?.length ?? null);
+        console.log("final_response_sources:", okPayload?.sources ?? null);
+
         return NextResponse.json(okPayload);
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
