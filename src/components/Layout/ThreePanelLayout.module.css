@@ -7,9 +7,9 @@
 }
 
 .leftPanel {
-    width: 460px;
+    width: 300px;
     background-color: var(--bg-sidebar);
-    border-right: 1px solid var(--border-strong);
+    border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
     height: 100%;

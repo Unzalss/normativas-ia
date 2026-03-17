@@ -1,27 +1,23 @@
 :root {
   /* Colors */
-  --bg-app: #F9FAFB;
+  --bg-app: #f6f7f7;
   /* Light gray background for app */
-  --bg-panel-right: #F3F4F6;
-  /* Slightly darker gray for right panel distinction */
-  --bg-card: #FFFFFF;
-  --bg-sidebar: #FFFFFF;
-  --border-color: #E5E7EB;
-  --border-strong: #D1D5DB;
-  /* Darker gray for panel separation */
+  --bg-panel-right: #f6f7f7;
+  /* Matching the app background for a seamless look */
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --border-color: #e2e8f0;
+  --border-strong: #cbd5e1;
 
-  --text-primary: #111827;
-  --text-secondary: #4B5563;
-  /* Slightly darker for better readability */
-  --text-citation: #4B5563;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-citation: #475569;
 
-  --primary-color: #2563EB;
-  /* Sober Blue (Royal Blue) */
-  --primary-hover: #1E40AF;
-  /* Darker Blue */
+  --primary-color: #1a283d;
+  --primary-hover: #0f172a;
 
-  --accent-color: #EEF2FF;
-  --accent-text: #4F46E5;
+  --accent-color: #f1f5f9;
+  --accent-text: #334155;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -32,7 +28,7 @@
   --panel-padding: 1.5rem;
 
   /* Typography */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --line-height-relaxed: 1.75;
 }
 

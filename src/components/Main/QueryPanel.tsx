@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Search, ChevronRight, FileText, Download, Share, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ResponseData, Source } from '@/lib/types';
 
@@ -35,72 +35,153 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
 
 
+    // State to determine if we are in the initial fully empty dashboard view
+    const isHome = !query && !response && !isLoading && !error;
+
     return (
         <div className={styles.container}>
-            <div className={styles.topBar}>
-                <div className={styles.dropdownWrapper}>
-                    <select
-                        className={styles.dropdownSelect}
-                        value={selectedNormaId === null ? "" : selectedNormaId}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            if (!val) {
-                                onSelectNormaId(null);
-                            } else {
-                                onSelectNormaId(Number(val));
-                            }
-                        }}
-                    >
-                        <option value="">Todas las normas</option>
-                        {normas.map(norma => (
-                            <option key={norma.id} value={norma.id}>
-                                {norma.codigo || norma.titulo}
-                            </option>
-                        ))}
-                    </select>
-                    <ChevronDown size={16} className={styles.dropdownIcon} />
-                </div>
+            {isHome ? (
+                // ─── HOME / EMPTY STATE ──────────────────────────────────────────────────
+                <div className={styles.homeLayout}>
+                    <header className={styles.homeHeader}>
+                        <div className={styles.headerLeft}>
+                            <span className={styles.headerEyebrow}>Módulo de Consulta Técnica</span>
+                        </div>
+                        <div className={styles.headerRight}>
+                            <div className={styles.dbBadge}>
+                                <div className={styles.dbStatusDot} />
+                                <span>Base de datos: BOE Feb 2024</span>
+                            </div>
+                        </div>
+                    </header>
 
-                <div className={styles.userProfile}>
-                    <span className={styles.userName}>Felix Perez</span>
-                    <button className={styles.profileBtn}>
-                        <div className={styles.avatar}>FP</div>
-                        <ChevronDown size={14} className={styles.profileChevron} />
-                    </button>
-                    {/* Mock Dropdown could go here, visually implied by the button structure for now */}
-                </div>
-            </div>
+                    <div className={styles.homeContent}>
+                        <div className={styles.heroSection}>
+                            <h2 className={styles.heroTitle}>Buscador Normativo Profesional</h2>
+                            <p className={styles.heroSubtitle}>Localice requisitos específicos en el articulado consolidado del CTE, Eurocódigos y normativa industrial.</p>
+                        </div>
 
-            <div className={styles.scrollContent}>
-                <div className={styles.inputSection}>
-                    <div className={styles.inputWrapper}>
-                        <textarea
-                            className={styles.textarea}
-                            placeholder="Escribe tu pregunta..."
-                            rows={2}
-                            value={text}
-                            onChange={(e) => setText(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSend();
-                                }
-                            }}
-                        />
-                        <div className={styles.inputActionsCompact}>
-                            <button
-                                className={styles.consultButton}
-                                onClick={handleSend}
-                                disabled={isLoading}
-                            >
-                                <Search size={16} />
-                                <span>{isLoading ? 'Consultando...' : 'Consultar'}</span>
-                            </button>
+                        <div className={styles.homeSearchWrapper}>
+                            <div className={styles.homeSearchInner}>
+                                <Search className={styles.searchIconLarge} size={24} />
+                                <textarea
+                                    className={styles.homeTextarea}
+                                    placeholder="Describa el requisito técnico o artículo a consultar..."
+                                    value={text}
+                                    onChange={(e) => setText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSend();
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <div className={styles.homeSearchActions}>
+                                <div className={styles.actionLinks}>
+                                    <button className={styles.actionLinkText}>DOCUMENTO</button>
+                                    <button className={styles.actionLinkText}>FILTROS</button>
+                                </div>
+                                <button className={styles.analyzeButton} onClick={handleSend} disabled={isLoading}>
+                                    {isLoading ? 'ANALIZANDO...' : 'ANALIZAR'}
+                                    <ChevronRight size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={styles.homeScope}>
+                            <label className={styles.scopeLabel}>Ámbito de aplicación</label>
+                            <div className={styles.scopeGrid}>
+                                <div className={styles.scopeSelectWrapper}>
+                                    <select
+                                        className={styles.scopeSelect}
+                                        value={selectedNormaId === null ? "" : selectedNormaId}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            onSelectNormaId(val ? Number(val) : null);
+                                        }}
+                                    >
+                                        <option value="">Todas las normativas (Global)</option>
+                                        {normas.map(norma => (
+                                            <option key={norma.id} value={norma.id}>
+                                                {norma.codigo || norma.titulo}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={14} className={styles.scopeChevron} />
+                                </div>
+                                <button className={styles.scopePill}>Código Técnico (CTE)</button>
+                                <button className={styles.scopePill}>Eurocódigos</button>
+                                <button className={styles.scopePill}>RITE / Industrial</button>
+                            </div>
+                        </div>
+
+                        <div className={styles.homeExamples}>
+                            <h4 className={styles.examplesLabel}>Ejemplos de consulta técnica</h4>
+                            <div className={styles.examplesGrid}>
+                                <button className={styles.exampleCard} onClick={() => onQuery("Resistencia al fuego en vigas de acero")}>
+                                    <FileText size={18} className={styles.exampleIcon} />
+                                    <span>Resistencia al fuego en vigas de acero (DB-SI)</span>
+                                </button>
+                                <button className={styles.exampleCard} onClick={() => onQuery("Pendiente máxima en rampas de garaje")}>
+                                    <FileText size={18} className={styles.exampleIcon} />
+                                    <span>Pendiente máxima en rampas de garaje (DB-SUA)</span>
+                                </button>
+                                <button className={styles.exampleCard} onClick={() => onQuery("Transmitancia térmica muros sótano")}>
+                                    <FileText size={18} className={styles.exampleIcon} />
+                                    <span>Transmitancia térmica muros sótano (DB-HE)</span>
+                                </button>
+                                <button className={styles.exampleCard} onClick={() => onQuery("Ventilación mínima en cocinas industriales")}>
+                                    <FileText size={18} className={styles.exampleIcon} />
+                                    <span>Ventilación mínima en cocinas industriales (RITE)</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={styles.homeFooter}>
+                            LexAI Técnica v4.1.0 • Información Jurídica Vinculante al BOE • 2024
                         </div>
                     </div>
                 </div>
+            ) : (
+                // ─── SEARCH / RESULTS STATE ──────────────────────────────────────────────
+                <>
+                    <header className={styles.resultsHeader}>
+                        <div className={styles.resultsSearchBox}>
+                            <Search size={18} className={styles.resultsSearchIcon} />
+                            <input
+                                type="text"
+                                className={styles.resultsInput}
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSend();
+                                }}
+                            />
+                            {text && (
+                                <button className={styles.clearSearchBtn} onClick={() => setText('')}>
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                        <div className={styles.resultsActions}>
+                            <button className={styles.resultsActionBtn}>
+                                <Download size={16} /> EXPORTAR
+                            </button>
+                            <button className={styles.resultsActionBtn}>
+                                <Share size={16} /> COMPARTIR
+                            </button>
+                        </div>
+                    </header>
 
-                {error && (
+                    <div className={styles.scrollContent}>
+                        {isLoading && (
+                            <div className={styles.loadingState}>
+                                Analizando jurisprudencia y normativa...
+                            </div>
+                        )}
+
+                        {error && (
                     <div className={styles.responseSection}>
                         <div className={styles.responseCard} style={{ borderLeftColor: '#ef4444' }}>
                             <h2 className={styles.responseTitle} style={{ color: '#ef4444' }}>Error</h2>
@@ -202,12 +283,12 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                     </div>
                                 )}
                             </div>
-
-
                         </div>
                     );
                 })()}
             </div>
-        </div>
+        </>
+    )}
+</div>
     );
 }

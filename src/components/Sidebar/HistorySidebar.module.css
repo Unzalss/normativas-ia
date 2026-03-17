@@ -2,28 +2,51 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 2rem 1.5rem;
+    background-color: var(--bg-sidebar);
 }
 
 .header {
-    margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+}
+
+.logoIcon {
+    background-color: var(--primary-color);
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.titleStack {
+    display: flex;
+    flex-direction: column;
 }
 
 .title {
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
+    color: var(--primary-color);
+    line-height: 1.2;
+    margin: 0;
 }
 
 .subtitle {
-    font-size: 0.75rem;
+    font-size: 0.6rem;
+    font-weight: 700;
     color: var(--text-secondary);
-    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
 }
 
 .actionArea {
-    margin-bottom: 1.5rem;
+    padding: 0 1rem 1rem 1rem;
 }
 
 .newChatButton {
@@ -32,47 +55,55 @@
     justify-content: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.75rem;
-    background-color: var(--text-primary);
-    /* Use primary color for button */
+    padding: 0.6rem 1rem;
+    background-color: var(--primary-color);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
+    font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: background-color 0.2s;
 }
 
 .newChatButton:hover {
-    opacity: 0.9;
-}
-
-.sectionTitle {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    letter-spacing: 0.05em;
-    margin-bottom: 0.75rem;
-    padding-left: 0.5rem;
-    font-weight: 600;
+    background-color: var(--primary-hover);
 }
 
 .historyList {
     flex: 1;
     overflow-y: auto;
+    padding: 0.5rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 1rem;
+}
+
+.sectionTitle {
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0 0.75rem;
+    opacity: 0.8;
+    margin: 0;
+}
+
+.historyGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
 }
 
 .historyItem {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.85rem 1rem;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
     text-align: left;
     color: var(--text-secondary);
@@ -80,18 +111,14 @@
 }
 
 .historyItem:hover {
-    background-color: var(--bg-app);
+    background-color: rgba(0, 0, 0, 0.03);
     color: var(--text-primary);
 }
 
 .selected {
-    background-color: var(--accent-color);
-    color: var(--accent-text);
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--primary-color);
     font-weight: 500;
-}
-
-.selected:hover {
-    background-color: var(--accent-color);
 }
 
 .icon {
@@ -107,6 +134,72 @@
 }
 
 .queryText {
-    font-size: 0.95rem;
-    line-height: 1.4;
+    font-size: 0.75rem;
+}
+
+.emptyHistory {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0 0.75rem;
+    opacity: 0.7;
+}
+
+.userProfile {
+    padding: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.userCard {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.userCard:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background-color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.userInfo {
+    flex: 1;
+    overflow: hidden;
+}
+
+.userName {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.userPlan {
+    font-size: 0.5625rem;
+    color: var(--text-secondary);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settingsIcon {
+    color: var(--text-secondary);
+    opacity: 0.7;
 }

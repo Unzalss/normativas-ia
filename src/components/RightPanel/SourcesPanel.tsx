@@ -130,23 +130,48 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
     return (
         <div className={styles.container}>
             <div className={styles.header}>
-                <h2 className={styles.title}>Fuentes exactas</h2>
+                <h2 className={styles.title}>Análisis e impacto</h2>
             </div>
 
             <div className={styles.content}>
+                {sources.length > 0 && (
+                    <div className={styles.contextCard}>
+                        <h3 className={styles.contextCardTitle}>Relevancia de Fuentes</h3>
+                        <div className={styles.contextCardBody}>
+                            <div className={styles.contextRow}>
+                                <span className={styles.contextLabel}>Grado de coincidencia principal</span>
+                                {sources[0]?.score ? (
+                                    <span className={clsx(styles.contextBadge, sources[0].score >= 0.70 ? styles.badgeHigh : styles.badgeMedium)}>
+                                        {sources[0].score >= 0.70 ? 'Alta confianza' : 'Media confianza'} ({(sources[0].score * 100).toFixed(0)}%)
+                                    </span>
+                                ) : (
+                                    <span className={clsx(styles.contextBadge, styles.badgeNeutral)}>
+                                        Estándar
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {sources.length > 0 && (
+                    <div className={styles.sourceListTitle}>
+                        Desglose de fuentes principales
+                    </div>
+                )}
+
                 <div className={styles.sourceList}>
                     {groupedSources.map((group, groupIndex) => (
                         <div key={`group-${group.key}`} className={styles.normaGroup}>
-
                             {/* Titulo Cabecera Norma */}
                             <div className={styles.normaHeader}>
                                 <div className={styles.iconWrapper}>
-                                    <FileText size={18} />
+                                    <FileText size={16} />
                                 </div>
                                 <div className={styles.sourceInfo}>
                                     <div className={styles.sourceTitle}>{group.title}</div>
                                     <div className={styles.sourceMeta}>
-                                        <span className={styles.score}>
+                                        <span className={styles.groupOverviewCount}>
                                             {group.isExpanded || group.visibleItems.length === group.totalItems
                                                 ? `${group.totalItems} fragmento${group.totalItems > 1 ? 's' : ''}`
                                                 : `${group.visibleItems.length} de ${group.totalItems} fragmentos`
@@ -180,15 +205,18 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                             >
                                                 <div className={styles.fragmentInfo}>
                                                     <div className={styles.fragmentTitle}>
-                                                        {source.subtitle || "Fragmento"}
+                                                        {source.subtitle || "Fragmento normativo"}
                                                     </div>
                                                     {!isSelected && (
                                                         <div className={styles.fragmentSnippet}>
-                                                            {source.content.substring(0, 100)}...
+                                                            {source.content.substring(0, 90)}...
                                                         </div>
                                                     )}
-                                                    <div className={styles.sourceMeta} style={{ marginTop: '4px' }}>
-                                                        <span className={styles.score}>{(source.score * 100).toFixed(0)}% relevant</span>
+                                                    <div className={styles.sourceMeta} style={{ marginTop: '6px' }}>
+                                                        <span className={styles.scoreBadge}>
+                                                            <span className={styles.scoreDot} />
+                                                            {source.score ? `${(source.score * 100).toFixed(0)}% de similitud` : 'Fragmento base'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 <div className={styles.chevronWrapper}>
@@ -215,15 +243,14 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                             </div>
 
                             {/* Botón Ver Más de esta Norma, si hay ocultos */}
-                            {group.totalItems > group.visibleItems.length || group.isExpanded ? (
+                            {(group.totalItems > group.visibleItems.length || group.isExpanded) && (
                                 <button
                                     className={styles.expandGroupButton}
                                     onClick={() => toggleGroup(group.key)}
                                 >
-                                    {group.isExpanded ? "Ocultar fragmentos" : `Ver ${group.totalItems - group.visibleItems.length} fragmentos más`}
+                                    {group.isExpanded ? "Ocultar fragmentos adicionales" : `Ver ${group.totalItems - group.visibleItems.length} fragmentos adicionales en esta norma`}
                                 </button>
-                            ) : null}
-
+                            )}
                         </div>
                     ))}
                 </div>
