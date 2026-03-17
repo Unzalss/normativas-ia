@@ -249,7 +249,10 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                     return (
                         <div className={styles.responseSection}>
-
+                            <div className={styles.userQueryCard}>
+                                <span className={styles.queryLabel}>Consulta realizada:</span>
+                                <span className={styles.queryTextVal}>{query}</span>
+                            </div>
 
                             <div className={styles.responseCard}>
                                 {isStructured ? (
@@ -282,6 +285,15 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                         ))}
                                     </div>
                                 )}
+
+                                {/* Esqueleto visual de Mapa Normativo */}
+                                <div className={styles.mapaNormativoBlock}>
+                                    <div className={styles.blockLabel}>Mapa Normativo</div>
+                                    <div className={styles.mapaItem}>
+                                        <span className={styles.mapaBadge}>ESTRUCTURA VISUAL</span>
+                                        <span className={styles.mapaText}>Estructura normativa asociada a la respuesta.</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     );

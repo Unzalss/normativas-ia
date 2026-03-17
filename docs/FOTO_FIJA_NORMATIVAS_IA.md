@@ -839,18 +839,105 @@ Resultado:
 ✔ control de “No consta” robusto  
 ✔ comportamiento consistente en producción  
 
-## Conclusión
+---
 
-El motor de búsqueda puede considerarse:
+# 28. ESTADO UI — INTERFAZ (IMPLEMENTADO PARCIAL)
 
-👉 listo para uso real (MVP funcional completo)
+Se ha implementado una nueva capa de interfaz profesional (UI) sobre el buscador existente.
+
+Objetivo:
+convertir el sistema en una herramienta de consulta normativa profesional (no estilo chat).
+
+## Cambios realizados
+
+✔ Rediseño completo de la home  
+✔ Rediseño de la pantalla de resultados  
+✔ Mejora del panel lateral de historial  
+✔ Mejora del panel derecho de fuentes  
+✔ Estructura visual profesional tipo herramienta técnica  
+✔ Separación clara de bloques:
+   - respuesta breve
+   - fundamento normativo
+   - artículos citados
+   - fuentes
+
+✔ Integración visual sin modificar lógica del sistema  
+
+## Estado técnico de la UI
+
+IMPORTANTE:
+
+- Todos los cambios han sido SOLO de frontend
+- NO se ha modificado:
+  - backend
+  - /api/ask
+  - Supabase
+  - RPC
+  - lógica de búsqueda
+  - RAG
+  - estructura de datos
+
+La UI se ha adaptado sobre los componentes existentes:
+
+- QueryPanel
+- ThreePanelLayout
+- HistorySidebar
+- SourcesPanel
+
+## Estado actual
+
+✔ UI de escritorio funcional  
+✔ buscador sigue funcionando correctamente  
+✔ fuentes siguen conectadas a datos reales  
+✔ despliegue en producción operativo  
+
+## Pendiente (UI)
+
+- añadir bloque “Mapa normativo” en resultados (estructura visual)
+- ajustar textos y títulos de panel derecho
+- pequeños ajustes de espaciado/layout
+- validación completa de UX
+
+## Pendiente (general)
+
+- batería de pruebas funcionales completas
+- versión móvil (fase siguiente)
 
 ---
 
-## Siguiente fase
+# 29. REGLA CRÍTICA DE DESARROLLO (NUEVA)
 
-- ampliación del corpus normativo  
-- mejora de interfaz (UX profesional)  
-- filtros avanzados (norma / materia / ámbito)
+A partir de este punto:
+
+Cualquier cambio en el proyecto debe cumplir:
+
+1. NO romper el buscador actual
+2. NO tocar backend salvo necesidad crítica
+3. NO modificar /api/ask sin validación previa
+4. NO alterar la lógica de búsqueda
+5. NO introducir datos falsos en la UI
+6. trabajar siempre con cambios mínimos y seguros
+
+La UI puede evolucionar, pero el motor RAG se considera estable.
+
+---
+
+# 30. FASE ACTUAL DEL PROYECTO
+
+Fase activa:
+
+👉 profesionalización de interfaz + validación real del sistema
+
+Orden de trabajo:
+
+1. estabilizar UI escritorio  
+2. pruebas funcionales reales  
+3. ajustes finos  
+4. implementación versión móvil  
+5. ampliación de normas  
+
+---
+
+# FIN ACTUALIZACIÓN UI
 
 # FIN DE FOTO FIJA

@@ -130,7 +130,7 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
     return (
         <div className={styles.container}>
             <div className={styles.header}>
-                <h2 className={styles.title}>Análisis e impacto</h2>
+                <h2 className={styles.title}>Fuentes exactas</h2>
             </div>
 
             <div className={styles.content}>
