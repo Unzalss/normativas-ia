@@ -116,7 +116,7 @@
 
 .inputSection {
     width: 100%;
-    max-width: 960px;
+    max-width: 880px;
 }
 
 .inputWrapper {
@@ -180,7 +180,7 @@
 
 .responseSection {
     width: 100%;
-    max-width: 960px;
+    max-width: 880px;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
@@ -202,8 +202,8 @@
 }
 
 .responseText {
-    font-size: 1.25rem;
-    line-height: 1.85;
+    font-size: 1.125rem;
+    line-height: 1.8;
     color: #1F2937;
 }
 
@@ -234,8 +234,8 @@
 }
 
 .blockText {
-    font-size: 1.375rem;
-    line-height: 1.85;
+    font-size: 1.25rem;
+    line-height: 1.8;
     color: #1F2937;
     margin: 0;
 }

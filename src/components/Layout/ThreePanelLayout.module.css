@@ -45,7 +45,7 @@
 }
 
 .rightPanel {
-    width: 400px;
+    width: 500px;
     background-color: var(--bg-panel-right);
     display: flex;
     flex-direction: column;
