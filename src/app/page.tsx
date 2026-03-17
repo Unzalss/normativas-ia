@@ -14,7 +14,7 @@ import ThreePanelLayout from '@/components/Layout/ThreePanelLayout';
 import HistorySidebar from '@/components/Sidebar/HistorySidebar';
 import QueryPanel from '@/components/Main/QueryPanel';
 import SourcesPanel from '@/components/RightPanel/SourcesPanel';
-import { HistoryItem, ResponseData, Source } from '@/lib/types';
+import { HistoryItem, ResponseData, Source, MapNode } from '@/lib/types';
 
 // Creamos un cliente público ligero apuntando al proyecto actual
 const supabase = createClient(
@@ -26,6 +26,7 @@ export default function Home() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [selectedHistoryId, setSelectedHistoryId] = useState<string>('');
     const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+    const [selectedMapNode, setSelectedMapNode] = useState<{ type: 'norma' | 'articulo', normaKey: string, articuloId?: string } | null>(null);
 
     // Initial state empty
     const [currentQuery, setCurrentQuery] = useState<string>('');
@@ -66,6 +67,7 @@ export default function Home() {
             setResponse(item.response);
             setSources(item.sources);
             setSelectedSourceId(null); // Reset source selection on interaction switch
+            setSelectedMapNode(null); // Reset map selection
         }
     };
 
@@ -75,6 +77,7 @@ export default function Home() {
         setResponse(undefined);
         setSources([]);
         setSelectedSourceId(null);
+        setSelectedMapNode(null);
         setError(null);
         // NO resetear: selectedNormaId
     };
@@ -85,6 +88,7 @@ export default function Home() {
         setResponse(undefined);
         setSources([]);
         setSelectedSourceId(null);
+        setSelectedMapNode(null);
         setError(null);
 
         try {
@@ -296,6 +300,8 @@ export default function Home() {
                     selectedNormaId={selectedNormaId}
                     onSelectNormaId={setSelectedNormaId}
                     sources={sources}
+                    selectedMapNode={selectedMapNode}
+                    onMapNodeSelect={setSelectedMapNode}
                 />
             }
             rightPanel={
@@ -304,6 +310,7 @@ export default function Home() {
                     sources={sources}
                     selectedSourceId={selectedSourceId}
                     onSelectSource={setSelectedSourceId}
+                    selectedMapNode={selectedMapNode}
                 />
             }
         />

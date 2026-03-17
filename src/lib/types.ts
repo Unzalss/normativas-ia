@@ -45,6 +45,12 @@ export interface ResponseData {
     citations: Citation[];
 }
 
+export interface MapNode {
+    type: 'norma' | 'articulo';
+    normaKey: string;
+    articuloId?: string;
+}
+
 export interface HistoryItem {
     id: string;
     query: string;

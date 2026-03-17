@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import styles from './SourcesPanel.module.css';
 import { FileText, ChevronRight, ChevronDown } from 'lucide-react';
-import { Source } from '@/lib/types';
+import { Source, MapNode } from '@/lib/types';
 import { clsx } from 'clsx';
 
 interface SourcesPanelProps {
@@ -12,9 +12,10 @@ interface SourcesPanelProps {
     selectedSourceId: string | null;
     onSelectSource: (id: string) => void;
     onCloseSource?: () => void;
+    selectedMapNode?: MapNode | null;
 }
 
-export default function SourcesPanel({ query = '', sources, selectedSourceId, onSelectSource, onCloseSource }: SourcesPanelProps) {
+export default function SourcesPanel({ query = '', sources, selectedSourceId, onSelectSource, onCloseSource, selectedMapNode = null }: SourcesPanelProps) {
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
     const toggleGroup = (key: string) => {
@@ -161,8 +162,18 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                 )}
 
                 <div className={styles.sourceList}>
-                    {groupedSources.map((group, groupIndex) => (
-                        <div key={`group-${group.key}`} className={styles.normaGroup}>
+                    {groupedSources.map((group, groupIndex) => {
+                        const isGroupSelected = selectedMapNode?.type === 'norma' && selectedMapNode.normaKey === group.key;
+                        const anyMapSelected = selectedMapNode !== null;
+
+                        return (
+                        <div 
+                            key={`group-${group.key}`} 
+                            className={clsx(
+                                styles.normaGroup,
+                                (anyMapSelected && !isGroupSelected && selectedMapNode.type === 'norma') && styles.dimmedGroup
+                            )}
+                        >
                             {/* Titulo Cabecera Norma */}
                             <div className={styles.normaHeader}>
                                 <div className={styles.iconWrapper}>
@@ -185,12 +196,21 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                             <div className={styles.fragmentsContainer}>
                                 {group.visibleItems.map((source) => {
                                     const isSelected = selectedSourceId === source.id;
+                                    const artKey = source.metadata?.articulo || source.articulo_detectado || source.subtitle || 'art-desconocido';
+                                    const isArticleSelected = selectedMapNode?.type === 'articulo' && selectedMapNode.normaKey === group.key && selectedMapNode.articuloId === artKey;
+                                    
+                                    const isDimmed = anyMapSelected && (
+                                        (selectedMapNode.type === 'norma' && selectedMapNode.normaKey !== group.key) ||
+                                        (selectedMapNode.type === 'articulo' && !isArticleSelected)
+                                    );
+
                                     return (
                                         <div
                                             key={source.id}
                                             className={clsx(
                                                 styles.fragmentCard,
-                                                isSelected && styles.activeSource
+                                                isSelected && styles.activeSource,
+                                                isDimmed && styles.dimmedCard
                                             )}
                                         >
                                             <div
@@ -252,7 +272,8 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                 </button>
                             )}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         </div>

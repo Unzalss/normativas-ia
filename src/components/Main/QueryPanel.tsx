@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
 import { ChevronDown, Search, ChevronRight, FileText, Download, Share, X } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ResponseData, Source } from '@/lib/types';
+import { ResponseData, Source, MapNode } from '@/lib/types';
 
 
 
@@ -17,9 +17,11 @@ interface QueryPanelProps {
     onSelectNormaId: (id: number | null) => void;
     error?: string | null;
     sources?: Source[];
+    selectedMapNode?: MapNode | null;
+    onMapNodeSelect?: (node: MapNode | null) => void;
 }
 
-export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId, sources = [] }: QueryPanelProps) {
+export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId, sources = [], selectedMapNode = null, onMapNodeSelect }: QueryPanelProps) {
     const [text, setText] = useState(query);
 
     // Sync local state when prop changes (restoring history)
@@ -37,6 +39,41 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
     // State to determine if we are in the initial fully empty dashboard view
     const isHome = !query && !response && !isLoading && !error;
+
+    const mapaNormativo = React.useMemo(() => {
+        if (!sources || sources.length === 0) return [];
+        const grupos: Record<string, any> = {};
+        
+        sources.forEach(s => {
+            const key = s.normaId ? String(s.normaId) : s.title;
+            if (!grupos[key]) {
+                grupos[key] = { 
+                    key, 
+                    titulo: s.title, 
+                    rango: s.metadata?.rango || null,
+                    articulos: {} 
+                };
+            }
+            
+            // Sub-grouping by Article (using reliable fields from Source payload)
+            const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || `art-desconocido`;
+            
+            if (!grupos[key].articulos[artKey]) {
+                grupos[key].articulos[artKey] = {
+                    key: artKey,
+                    titulo: s.subtitle || artKey,
+                    fragmentos: []
+                };
+            }
+            grupos[key].articulos[artKey].fragmentos.push(s);
+        });
+
+        // Convert the Record<> structures to iterablable Arrays
+        return Object.values(grupos).map(norma => ({
+            ...norma,
+            articulosList: Object.values(norma.articulos)
+        }));
+    }, [sources]);
 
     return (
         <div className={styles.container}>
@@ -255,45 +292,124 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                             </div>
 
                             <div className={styles.responseCard}>
-                                {isStructured ? (
-                                    <div className={styles.structuredBlocks}>
-                                        {respuestaBreve && (
-                                            <div className={styles.responseBlock}>
-                                                <div className={styles.blockLabel}>Respuesta breve</div>
-                                                <p className={styles.blockText}>{respuestaBreve}</p>
+                                {!selectedMapNode ? (
+                                    <>
+                                        {isStructured ? (
+                                            <div className={styles.structuredBlocks}>
+                                                {respuestaBreve && (
+                                                    <div className={styles.responseBlock}>
+                                                        <div className={styles.blockLabel}>Respuesta breve</div>
+                                                        <p className={styles.blockText}>{respuestaBreve}</p>
+                                                    </div>
+                                                )}
+                                                {fundamentoNormativo && (
+                                                    <div className={styles.responseBlock}>
+                                                        <div className={styles.blockLabel}>Fundamento normativo</div>
+                                                        <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
+                                                    </div>
+                                                )}
+                                                {cita && (
+                                                    <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
+                                                        <div className={styles.blockLabel}>Artículos citados</div>
+                                                        <div className={styles.citaList}>
+                                                            {renderCitations(cita)}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className={styles.responseText}>
+                                                {text.split('\n\n').map((paragraph, i) => (
+                                                    <p key={i}>{paragraph}</p>
+                                                ))}
                                             </div>
                                         )}
-                                        {fundamentoNormativo && (
-                                            <div className={styles.responseBlock}>
-                                                <div className={styles.blockLabel}>Fundamento normativo</div>
-                                                <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
-                                            </div>
-                                        )}
-                                        {cita && (
-                                            <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
-                                                <div className={styles.blockLabel}>Artículos citados</div>
-                                                <div className={styles.citaList}>
-                                                    {renderCitations(cita)}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                    </>
                                 ) : (
-                                    <div className={styles.responseText}>
-                                        {text.split('\n\n').map((paragraph, i) => (
-                                            <p key={i}>{paragraph}</p>
-                                        ))}
+                                    <div className={styles.filteredRAGView}>
+                                        <button 
+                                            className={styles.backButton} 
+                                            onClick={() => onMapNodeSelect && onMapNodeSelect(null)}
+                                        >
+                                            ← Volver a la respuesta completa
+                                        </button>
+                                        
+                                        <div className={styles.filteredHeader}>
+                                            <h3 className={styles.filteredTitle}>
+                                                {selectedMapNode.type === 'norma' 
+                                                    ? 'Fragmentos asociados a la norma' 
+                                                    : 'Fragmentos asociados al artículo'}
+                                            </h3>
+                                            <div className={styles.filteredSubtitle}>
+                                                {selectedMapNode.type === 'norma' 
+                                                    ? mapaNormativo.find(n => n.key === selectedMapNode.normaKey)?.titulo 
+                                                    : sources.find(s => s.id === selectedMapNode.articuloId || s.subtitle === selectedMapNode.articuloId)?.subtitle || 'Artículo seleccionado'
+                                                }
+                                            </div>
+                                        </div>
+                                        
+                                        <div className={styles.filteredFragments}>
+                                            {sources
+                                                .filter(s => {
+                                                    const key = s.normaId ? String(s.normaId) : s.title;
+                                                    if (selectedMapNode.type === 'norma') return key === selectedMapNode.normaKey;
+                                                    
+                                                    // By article exact match
+                                                    const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || `art-desconocido`;
+                                                    return key === selectedMapNode.normaKey && artKey === selectedMapNode.articuloId;
+                                                })
+                                                .map(s => (
+                                                    <div key={s.id} className={styles.filteredFragmentCard}>
+                                                        <div className={styles.filteredFragmentTitle}>{s.subtitle || 'Fragmento base'}</div>
+                                                        <div className={styles.filteredFragmentText}>{highlightString(s.content, query)}</div>
+                                                    </div>
+                                                ))
+                                            }
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* Esqueleto visual de Mapa Normativo */}
-                                <div className={styles.mapaNormativoBlock}>
-                                    <div className={styles.blockLabel}>Mapa Normativo</div>
-                                    <div className={styles.mapaItem}>
-                                        <span className={styles.mapaBadge}>ESTRUCTURA VISUAL</span>
-                                        <span className={styles.mapaText}>Estructura normativa asociada a la respuesta.</span>
+                                {/* Interactive Mapa Normativo */}
+                                {sources.length > 0 && (
+                                    <div className={styles.mapaNormativoBlock}>
+                                        <div className={styles.blockLabel}>Estructura normativa asociada a la respuesta</div>
+                                        
+                                        <div className={styles.mapaTree}>
+                                            {mapaNormativo.map((norma) => (
+                                                <div key={norma.key} className={styles.mapaNormaNode}>
+                                                    {/* Click en la Norma Padre */}
+                                                    <div 
+                                                        className={clsx(
+                                                            styles.mapaNodeHeader, 
+                                                            selectedMapNode?.normaKey === norma.key && !selectedMapNode?.articuloId && styles.nodeSelected
+                                                        )}
+                                                        onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'norma', normaKey: norma.key })}
+                                                    >
+                                                        {norma.rango && <span className={styles.mapaBadge}>{norma.rango}</span>}
+                                                        <span className={styles.mapaContentTitle}>{norma.titulo}</span>
+                                                    </div>
+                                                    
+                                                    {/* Hijos (Artículos) */}
+                                                    <div className={styles.mapaHijos}>
+                                                        {norma.articulosList.map((art: any) => (
+                                                            <div 
+                                                                key={art.key} 
+                                                                className={clsx(
+                                                                    styles.mapaArticuloNode, 
+                                                                    selectedMapNode?.articuloId === art.key && styles.nodeSelected
+                                                                )}
+                                                                onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'articulo', normaKey: norma.key, articuloId: art.key })}
+                                                            >
+                                                                <span className={styles.mapaBullet}>↳</span>
+                                                                <span className={styles.mapaContentSubtitle}>{art.titulo}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     );
