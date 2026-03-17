@@ -44,31 +44,42 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
         if (!sources || sources.length === 0) return [];
         const grupos: Record<string, any> = {};
         
-        sources.forEach(s => {
+        // Use order-based limiting: First 3 unique norms, then max 3 unique articles per norm
+        const maxNorms = 3;
+        const maxArticlesPerNorm = 3;
+        let normsCount = 0;
+        
+        for (const s of sources) {
             const key = s.normaId ? String(s.normaId) : s.title;
+            
             if (!grupos[key]) {
+                if (normsCount >= maxNorms) continue;
                 grupos[key] = { 
                     key, 
                     titulo: s.title, 
                     rango: s.metadata?.rango || null,
-                    articulos: {} 
+                    articulos: {},
+                    articlesCount: 0
                 };
+                normsCount++;
             }
             
-            // Sub-grouping by Article (using reliable fields from Source payload)
+            // Sub-grouping by Article
             const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || `art-desconocido`;
             
             if (!grupos[key].articulos[artKey]) {
+                if (grupos[key].articlesCount >= maxArticlesPerNorm) continue;
                 grupos[key].articulos[artKey] = {
                     key: artKey,
                     titulo: s.subtitle || artKey,
                     fragmentos: []
                 };
+                grupos[key].articlesCount++;
             }
             grupos[key].articulos[artKey].fragmentos.push(s);
-        });
+        }
 
-        // Convert the Record<> structures to iterablable Arrays
+        // Convert the Record<> structures to iterable Arrays
         return Object.values(grupos).map(norma => ({
             ...norma,
             articulosList: Object.values(norma.articulos)
@@ -286,10 +297,43 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                     return (
                         <div className={styles.responseSection}>
-                            <div className={styles.userQueryCard}>
-                                <span className={styles.queryLabel}>Consulta realizada:</span>
-                                <span className={styles.queryTextVal}>{query}</span>
-                            </div>
+                            {/* Interactive Mapa Normativo (Moved to top as sticky nav) */}
+                            {sources.length > 0 && (
+                                <div className={styles.mapaNormativoBlock}>
+                                    <div className={styles.blockLabel}>Fuentes asociadas a la consulta</div>
+                                    <div className={styles.mapaTree}>
+                                        {mapaNormativo.map((norma) => (
+                                            <div key={norma.key} className={styles.mapaNormaNode}>
+                                                <div 
+                                                    className={clsx(
+                                                        styles.mapaNodeHeader, 
+                                                        selectedMapNode?.normaKey === norma.key && !selectedMapNode?.articuloId && styles.nodeSelected
+                                                    )}
+                                                    onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'norma', normaKey: norma.key })}
+                                                >
+                                                    {norma.rango && <span className={styles.mapaBadge}>{norma.rango}</span>}
+                                                    <span className={styles.mapaContentTitle}>{norma.titulo}</span>
+                                                </div>
+                                                
+                                                <div className={styles.mapaHijos}>
+                                                    {norma.articulosList.map((art: any) => (
+                                                        <div 
+                                                            key={art.key} 
+                                                            className={clsx(
+                                                                styles.mapaArticuloNode, 
+                                                                selectedMapNode?.articuloId === art.key && styles.nodeSelected
+                                                            )}
+                                                            onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'articulo', normaKey: norma.key, articuloId: art.key })}
+                                                        >
+                                                            <span className={styles.mapaContentSubtitle}>{art.titulo}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
                             <div className={styles.responseCard}>
                                 {!selectedMapNode ? (
@@ -366,49 +410,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                 ))
                                             }
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* Interactive Mapa Normativo */}
-                                {sources.length > 0 && (
-                                    <div className={styles.mapaNormativoBlock}>
-                                        <div className={styles.blockLabel}>Estructura normativa asociada a la respuesta</div>
-                                        
-                                        <div className={styles.mapaTree}>
-                                            {mapaNormativo.map((norma) => (
-                                                <div key={norma.key} className={styles.mapaNormaNode}>
-                                                    {/* Click en la Norma Padre */}
-                                                    <div 
-                                                        className={clsx(
-                                                            styles.mapaNodeHeader, 
-                                                            selectedMapNode?.normaKey === norma.key && !selectedMapNode?.articuloId && styles.nodeSelected
-                                                        )}
-                                                        onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'norma', normaKey: norma.key })}
-                                                    >
-                                                        {norma.rango && <span className={styles.mapaBadge}>{norma.rango}</span>}
-                                                        <span className={styles.mapaContentTitle}>{norma.titulo}</span>
-                                                    </div>
-                                                    
-                                                    {/* Hijos (Artículos) */}
-                                                    <div className={styles.mapaHijos}>
-                                                        {norma.articulosList.map((art: any) => (
-                                                            <div 
-                                                                key={art.key} 
-                                                                className={clsx(
-                                                                    styles.mapaArticuloNode, 
-                                                                    selectedMapNode?.articuloId === art.key && styles.nodeSelected
-                                                                )}
-                                                                onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'articulo', normaKey: norma.key, articuloId: art.key })}
-                                                            >
-                                                                <span className={styles.mapaBullet}>↳</span>
-                                                                <span className={styles.mapaContentSubtitle}>{art.titulo}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
                                         </div>
-                                    </div>
                                 )}
                             </div>
                         </div>
