@@ -940,4 +940,100 @@ Orden de trabajo:
 
 # FIN ACTUALIZACIÓN UI
 
+31. MAPA NORMATIVO (FRONTEND) — ESTADO ACTUAL
+
+Estado: IMPLEMENTADO (Frontend) — SIN backend
+
+Se ha implementado un sistema visual llamado Mapa Normativo en QueryPanel.
+
+Objetivo
+
+Mostrar de forma estructurada:
+
+normas implicadas en la respuesta
+
+artículos relevantes por norma
+
+jerarquía visual de fuentes jurídicas
+
+Funcionamiento actual
+
+El mapa se construye exclusivamente desde:
+
+sources[]
+
+devuelto por /api/ask.
+
+Lógica implementada
+
+✔ agrupación por norma
+✔ agrupación por artículos
+✔ truncado final (máx 3 normas / 4 artículos)
+✔ fallback visual si sources está vacío
+✔ eliminación de desmontaje React (&&)
+✔ render SIEMPRE visible (nunca desaparece)
+
+Sistema de priorización visual
+
+Orden de importancia:
+
+artículos citados por el LLM (extraídos de "Cita:")
+
+orden de ranking vectorial (index)
+
+volumen de fragmentos
+
+Se aplica un filtrado previo:
+
+artículos citados
+
+top N del ranking (index < 5)
+
+Estado actual real
+
+✔ funciona correctamente cuando sources contiene datos
+✔ UI estable (sin pantallas vacías)
+✔ fallback controlado
+
+❌ limitación crítica:
+
+si sources = [] → el mapa no puede construirse
+
+Esto NO es un problema de frontend.
+
+Interacción con el mapa (estado)
+
+Se ha intentado:
+
+click en chip → filtrar respuesta
+
+Estado actual:
+
+❌ no funcional correctamente en todos los casos
+
+Motivo:
+
+depende completamente de sources
+
+no existe estado independiente del mapa
+
+no hay recomputación de respuesta
+
+Conclusión técnica
+
+El mapa normativo:
+
+✔ está correctamente implementado en frontend
+❌ está limitado por la calidad del backend RAG
+
+El siguiente salto del sistema NO es UI.
+
+👉 Es mejorar la recuperación (sources) desde backend.
+
+🔥 BLOQUE CLAVE
+
+A partir de ahora:
+
+calidad del sistema = calidad de sources
+
 # FIN DE FOTO FIJA

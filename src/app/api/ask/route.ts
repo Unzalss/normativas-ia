@@ -312,6 +312,12 @@ export async function POST(req: Request) {
 
         const { data, error } = await rpcQuery;
 
+        console.log("=== DEBUG RPC RESULT ===");
+        console.log("query:", question);
+        console.log("parsedNormaId:", parsedNormaId);
+        console.log("rpc_result_count:", data?.length);
+        console.log("rpc_first_3:", data?.slice(0,3));
+
         if (error) {
             console.error("Error RPC vectorial/híbrido:", error.message, error.details);
             debugInfo.rpcParamErrors = error;
@@ -331,6 +337,10 @@ export async function POST(req: Request) {
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
         );
+
+        console.log("=== DEBUG VALID DATA ===");
+        console.log("validData_count:", validData?.length);
+        console.log("validData_first_3:", validData?.slice(0,3));
         console.log(`[ASK] Fragmentos válidos tras filtro: ${validData.length}`);
 
         let bestScore = 0;
@@ -634,6 +644,10 @@ Reglas adicionales:
             okPayload.sources = [];
             okPayload.highlights = [];
         }
+
+        console.log("=== DEBUG SOURCES ===");
+        console.log("sources_count:", processedData?.length);
+        console.log("sources:", processedData);
 
         if (xDebug) okPayload.debug = debugInfo;
 
