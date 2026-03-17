@@ -349,9 +349,9 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     return (
                         <div className={styles.responseSection}>
                             {/* Interactive Mapa Normativo (Moved to top as sticky nav) */}
-                            {sources.length > 0 && (
-                                <div className={styles.mapaNormativoBlock}>
-                                    <div className={styles.blockLabel}>Fuentes asociadas a la consulta</div>
+                            <div className={styles.mapaNormativoBlock}>
+                                <div className={styles.blockLabel}>Fuentes asociadas a la consulta</div>
+                                {sources.length > 0 ? (
                                     <div className={styles.mapaTree}>
                                         {mapaNormativo.map((norma) => (
                                             <div key={norma.key} className={styles.mapaNormaNode}>
@@ -383,8 +383,12 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                ) : (
+                                    <div style={{ padding: '0.5rem 0 0 0', color: '#64748B', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                                        No se han encontrado fragmentos estructurados para esta consulta.
+                                    </div>
+                                )}
+                            </div>
 
                             <div className={styles.responseCard}>
                                 {!selectedMapNode ? (

@@ -135,33 +135,36 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
             </div>
 
             <div className={styles.content}>
-                {sources.length > 0 && (
-                    <div className={styles.contextCard}>
-                        <h3 className={styles.contextCardTitle}>Relevancia de Fuentes</h3>
-                        <div className={styles.contextCardBody}>
-                            <div className={styles.contextRow}>
-                                <span className={styles.contextLabel}>Grado de coincidencia principal</span>
-                                {sources[0]?.score ? (
-                                    <span className={clsx(styles.contextBadge, sources[0].score >= 0.70 ? styles.badgeHigh : styles.badgeMedium)}>
-                                        {sources[0].score >= 0.70 ? 'Alta confianza' : 'Media confianza'} ({(sources[0].score * 100).toFixed(0)}%)
-                                    </span>
-                                ) : (
-                                    <span className={clsx(styles.contextBadge, styles.badgeNeutral)}>
-                                        Estándar
-                                    </span>
-                                )}
+                {sources.length === 0 ? (
+                    <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: '#94A3B8' }}>
+                        <FileText size={32} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
+                        <p style={{ fontSize: '0.95rem', fontWeight: 500, margin: 0 }}>No hay fuentes exactas detectadas para esta consulta.</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className={styles.contextCard}>
+                            <h3 className={styles.contextCardTitle}>Relevancia de Fuentes</h3>
+                            <div className={styles.contextCardBody}>
+                                <div className={styles.contextRow}>
+                                    <span className={styles.contextLabel}>Grado de coincidencia principal</span>
+                                    {sources[0]?.score ? (
+                                        <span className={clsx(styles.contextBadge, sources[0].score >= 0.70 ? styles.badgeHigh : styles.badgeMedium)}>
+                                            {sources[0].score >= 0.70 ? 'Alta confianza' : 'Media confianza'} ({(sources[0].score * 100).toFixed(0)}%)
+                                        </span>
+                                    ) : (
+                                        <span className={clsx(styles.contextBadge, styles.badgeNeutral)}>
+                                            Estándar
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
 
-                {sources.length > 0 && (
-                    <div className={styles.sourceListTitle}>
-                        Desglose de fuentes principales
-                    </div>
-                )}
+                        <div className={styles.sourceListTitle}>
+                            Desglose de fuentes principales
+                        </div>
 
-                <div className={styles.sourceList}>
+                        <div className={styles.sourceList}>
                     {groupedSources.map((group, groupIndex) => {
                         const isGroupSelected = selectedMapNode?.type === 'norma' && selectedMapNode.normaKey === group.key;
                         const anyMapSelected = selectedMapNode !== null;
@@ -248,9 +251,10 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                             {isSelected && (
                                                 <div className={styles.sourceDetail}>
                                                     {source.highlight && (
-                                                        <div className={styles.highlightQuote}>
-                                                            "{source.highlight}"
-                                                        </div>
+                                                        <div 
+                                                            className={styles.highlightQuote}
+                                                            dangerouslySetInnerHTML={{ __html: source.highlight }}
+                                                        />
                                                     )}
                                                     <div className={styles.detailContent}>
                                                         {highlightString(source.content, query)}
@@ -275,6 +279,8 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                         );
                     })}
                 </div>
+                </>
+                )}
             </div>
         </div>
     );
