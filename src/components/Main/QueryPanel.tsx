@@ -46,10 +46,30 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
         const citaText = response?.text ? (response.text.match(/Cita:\s*\n?([\s\S]*?)(?=\n(?:Respuesta breve|Fundamento normativo|Cita):|$)/i)?.[1]?.trim() || '') : '';
         const citaContentNorm = citaText.toLowerCase();
 
+        // --- NEW: Pre-filter logic ---
+        const citadosSet = new Set<string>();
+        // First pass: identify which sources are actively cited
+        sources.forEach(s => {
+            const artKey = s.metadata?.articulo || s.articulo_detectado || s.subtitle || '';
+            const tituloArt = s.subtitle || artKey;
+            
+            if (tituloArt && citaContentNorm) {
+                const isCited = citaContentNorm.includes(tituloArt.toLowerCase()) || 
+                                (s.metadata?.articulo && citaContentNorm.includes(s.metadata.articulo.toLowerCase()));
+                if (isCited) citadosSet.add(s.id);
+            }
+        });
+
+        // Filter: Cited OR Top 5
+        const filteredSources = sources.filter((s, index) => citadosSet.has(s.id) || index < 5);
+        // Fallback: If filter is somehow empty (e.g. no citations and array was tiny anyway), use all.
+        const finalSources = filteredSources.length > 0 ? filteredSources : sources;
+        // -----------------------------
+
         const grupos: Record<string, any> = {};
         
-        // 1. Agrupar primero todas las fuentes sin cortes
-        sources.forEach((s, index) => {
+        // 1. Agrupar primero todas las fuentes del subconjunto sin cortes
+        finalSources.forEach((s, index) => {
             // 2. Fallbacks elegantes si faltan IDs
             const key = s.normaId ? String(s.normaId) : (s.title || 'norma-gen');
             const tituloNorma = s.title || 'Documentación de referencia';
