@@ -7,7 +7,7 @@
 }
 
 .leftPanel {
-    width: 340px;
+    width: 460px;
     background-color: var(--bg-sidebar);
     border-right: 1px solid var(--border-strong);
     display: flex;

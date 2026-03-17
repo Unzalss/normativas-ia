@@ -128,25 +128,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     const cita               = extract('Cita');
                     const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
 
-                    // --- Group sources by norma for Fuentes jurídicas ---
-                    const normaGroups = new Map<string, { normaTitle: string; articles: Source[] }>();
-                    for (const src of sources) {
-                        const key = src.normaId != null ? String(src.normaId) : src.title;
-                        if (!normaGroups.has(key)) {
-                            normaGroups.set(key, { normaTitle: src.title, articles: [] });
-                        }
-                        normaGroups.get(key)!.articles.push(src);
-                    }
 
-                    // Badge: show selected norma, OR the primary detected norma from sources
-                    let displayedNormaTitle: string | null = null;
-                    if (selectedNormaId !== null) {
-                        const sn = normas.find(n => n.id === selectedNormaId);
-                        if (sn) displayedNormaTitle = sn.codigo || sn.titulo;
-                    } else if (sources.length > 0) {
-                        // Global search: show the highest scoring norma
-                        displayedNormaTitle = sources[0].title;
-                    }
 
                     const renderCitations = (raw: string) =>
                         raw.split('\n').filter(l => l.trim()).map((line, i) => (
@@ -186,11 +168,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                     return (
                         <div className={styles.responseSection}>
-                            {displayedNormaTitle && (
-                                <div className={styles.normaBadgeRow}>
-                                    <span className={styles.normaBadge}>{displayedNormaTitle}</span>
-                                </div>
-                            )}
+
 
                             <div className={styles.responseCard}>
                                 {isStructured ? (
@@ -225,29 +203,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                 )}
                             </div>
 
-                            {/* Fuentes jurídicas */}
-                            {normaGroups.size > 0 && (
-                                <div className={styles.fuentesCard}>
-                                    <div className={styles.fuentesTitle}>Fuentes jurídicas</div>
-                                    {Array.from(normaGroups.values()).map(({ normaTitle, articles }) => (
-                                        <div key={normaTitle} className={styles.fuentesGroup}>
-                                            <div className={styles.fuentesNorma}>{normaTitle}</div>
-                                            <ul className={styles.fuentesList}>
-                                                {articles.map(src => (
-                                                    <li key={src.id}>
-                                                        <button
-                                                            className={styles.fuentesItem}
-                                                            onClick={() => onCitationClick(src.id)}
-                                                        >
-                                                            {src.subtitle || src.title}
-                                                        </button>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+
                         </div>
                     );
                 })()}

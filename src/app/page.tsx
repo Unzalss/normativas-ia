@@ -163,7 +163,10 @@ export default function Home() {
                         if (itemScore < 0.55) continue; // Skip low relevance noise
 
                         const idStr = item.id ? String(item.id) : null;
-                        const sig = `${item.norma_id || ''}-${item.seccion || ''}-${item.tipo || ''}-${(item.texto || item.content || "").substring(0, 40)}`;
+                        // Strict deduplication by norma and completely cleaned section (article), 
+                        // so we don't show multiple fragments from the same article.
+                        const cleanedSec = cleanCitation(item.seccion || '');
+                        const sig = `${item.norma_id || ''}-${cleanedSec}`;
 
                         // Avoid duplicates
                         if (idStr && seenIds.has(idStr)) continue;
@@ -176,16 +179,17 @@ export default function Home() {
                     }
 
                     newSources = uniqueData.map((item: any, index: number) => {
-                        // 1) Title logic: norma.titulo -> codigo -> "Documento X"
+                        // 1) Title logic: lookup in our preloaded `normas` state
                         let sourceTitle = `Documento ${index + 1}`;
-                        if (item.norma_titulo && item.codigo) {
-                            sourceTitle = `${item.codigo} — ${item.norma_titulo}`;
-                        } else if (item.norma_titulo) {
-                            sourceTitle = item.norma_titulo;
-                        } else if (item.codigo) {
-                            sourceTitle = item.codigo;
-                        } else if (item.normas && item.normas.titulo) {
-                            sourceTitle = item.normas.titulo;
+                        if (item.norma_id) {
+                            const preloadedNorma = normas.find(Math => Math.id === item.norma_id);
+                            if (preloadedNorma) {
+                                sourceTitle = preloadedNorma.codigo || preloadedNorma.titulo;
+                            } else if (item.codigo) {
+                                sourceTitle = item.codigo;
+                            } else if (item.norma_titulo) {
+                                sourceTitle = item.norma_titulo;
+                            }
                         }
 
                         // 2) Subtitle logic (Artículo or Sección) — strip internal block markers
@@ -213,6 +217,19 @@ export default function Home() {
                             titulo_articulo: item.titulo_articulo,
                             highlight: item.highlight
                         };
+                    });
+
+                    // Sort newSources by norma_id, then numerically by article number
+                    newSources.sort((a, b) => {
+                        const normaA = typeof a.normaId === 'number' ? a.normaId : 0;
+                        const normaB = typeof b.normaId === 'number' ? b.normaId : 0;
+                        if (normaA !== normaB) return normaA - normaB;
+                        
+                        const getNum = (str: string) => {
+                            const match = str.match(/\d+/);
+                            return match ? parseInt(match[0], 10) : 0;
+                        };
+                        return getNum(a.subtitle || '') - getNum(b.subtitle || '');
                     });
 
                     previewText = combinedText;
