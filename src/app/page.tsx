@@ -157,15 +157,17 @@ export default function Home() {
                         citations: citations
                     };
 
+                    // Trust the backend's sources array if available, otherwise fallback to data.
+                    const backendSources = Array.isArray(json.sources) && json.sources.length > 0
+                        ? json.sources
+                        : (json.data || []);
+
                     // Deduplicate unique sources for the right panel
                     const uniqueData: any[] = [];
                     const seenSignatures = new Set<string>();
                     const seenIds = new Set<string>();
 
-                    for (const item of (json.data || [])) {
-                        const itemScore = typeof item.score === 'number' ? item.score : (item.similarity || 0);
-                        if (itemScore < 0.55) continue; // Skip low relevance noise
-
+                    for (const item of backendSources) {
                         const idStr = item.id ? String(item.id) : null;
                         // Strict deduplication by norma and completely cleaned section (article), 
                         // so we don't show multiple fragments from the same article.

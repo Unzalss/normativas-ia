@@ -1,8 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 // Carga manual de .env.local para que funcione localmente con node sin 'next' o 'dotenv'
 try {
@@ -136,7 +139,7 @@ async function ingest() {
     }
 
     const dataBuffer = fs.readFileSync(PDF_FILE);
-    const pdfData = await pdfParse(dataBuffer);
+    const pdfData = await pdfParse.default(dataBuffer);
     const text = normalizeText(pdfData.text || '');
 
     if (!text || text.length < 500) {
