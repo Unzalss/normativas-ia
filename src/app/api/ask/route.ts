@@ -157,18 +157,28 @@ export async function POST(req: Request) {
                         keywordsArray = norma.keywords;
                     }
 
+                    const normalizeText = (text: string) => 
+                        text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+                    const questionNormalized = normalizeText(question);
+
                     const termsToMatch = [
                         norma.materia,
                         norma.submateria,
                         ...keywordsArray,
                     ]
                         .filter(Boolean)
-                        .map((t) => String(t).toLowerCase().trim())
+                        .map(normalizeText)
                         .filter((t) => t.length > 2);
 
                     const hasMatch = termsToMatch.some((kw) => {
                         if (kw === "pci") return /\bpci\b/i.test(questionLower);
-                        return questionLower.includes(kw);
+                        
+                        // Uso de regex con límites de palabra (\b) para atrapar coincidencias exactas y evitar falsos positivos
+                        // Se han escapado caracteres especiales por si la keyword los incluyera
+                        const safeKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(`\\b${safeKw}\\b`, "i");
+                        return regex.test(questionNormalized);
                     });
 
                     if (hasMatch) {
