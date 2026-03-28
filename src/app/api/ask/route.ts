@@ -288,19 +288,58 @@ export async function POST(req: Request) {
         // Limpieza absoluta para Postgres: sólo null o integer, nunca string vacío
         const validNormaId = typeof parsedNormaId === "number" && Number.isInteger(parsedNormaId) ? parsedNormaId : null;
 
-        const rpcParams: any = {
-            q_embedding,
-            q_text: question,
-            k: safeK,
-        };
+        // --- Article-number detection (hoisted BEFORE RPC) ---
+        const articuloMencionadoMatch = question.match(
+            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
+        );
+        const articuloMencionado = articuloMencionadoMatch
+            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
+            : null;
 
-        if (validNormaId !== null) {
-            rpcParams.q_norma_id = validNormaId;
+        const articuloRegex = articuloMencionado
+            ? (() => {
+                const safeNum = articuloMencionado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return new RegExp(`\\bart(?:í|i)culo\\s+${safeNum}\\b|\\bart\\.?\\s*${safeNum}\\b`, 'i');
+            })()
+            : null;
+
+        let rawData: any[] = [];
+        let rpcError: any = null;
+        let usedDirectFetch = false;
+
+        if (validNormaId !== null && articuloMencionado && articuloRegex) {
+            // Intentar primero búsqueda nominal directa en Supabase obviando pgvector
+            const { data: exactData } = await supabase
+                .from("normas_partes")
+                .select("id, norma_id, seccion, articulo, texto, content, capitulo_detectado, titulo_articulo, orden")
+                .eq("norma_id", validNormaId)
+                .ilike("seccion", `%${articuloMencionado}%`)
+                .limit(20);
+
+            if (exactData && exactData.length > 0) {
+                const matchedExact = exactData.filter((f: any) => articuloRegex.test(String(f.seccion || "")));
+                if (matchedExact.length > 0) {
+                    rawData = matchedExact.map(f => ({ ...f, similarity: 1.0, score: 1.0 }));
+                    usedDirectFetch = true;
+                    console.log(`[ASK] Búsqueda nominal directa exitosa para artículo ${articuloMencionado}: recuperados ${matchedExact.length} fragmentos estrictos.`);
+                }
+            }
         }
 
-        let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
+        if (!usedDirectFetch) {
+            const rpcParams: any = {
+                q_embedding,
+                q_text: question,
+                k: safeK,
+            };
 
-        if (parsedNormaId === null) {
+            if (validNormaId !== null) {
+                rpcParams.q_norma_id = validNormaId;
+            }
+
+            let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
+
+            if (parsedNormaId === null) {
             let allowedNormaIds: number[] = [];
             let normQuery = supabase.from("normas").select("id").limit(MAX_NORMAS);
 
@@ -320,29 +359,31 @@ export async function POST(req: Request) {
             }
         }
 
-        const { data, error } = await rpcQuery;
+            const { data, error } = await rpcQuery;
+            rawData = data || [];
+            rpcError = error;
+            console.log(`[ASK] Filas brutas de RPC: ${rawData.length}`);
+        }
 
-        console.log("=== DEBUG RPC RESULT ===");
+        console.log("=== RESULT LOG ===");
         console.log("query:", question);
         console.log("parsedNormaId:", parsedNormaId);
-        console.log("rpc_result_count:", data?.length);
-        console.log("rpc_first_3:", data?.slice(0,3));
+        console.log("result_count:", rawData.length);
+        console.log("usedDirectFetch:", usedDirectFetch);
 
-        if (error) {
-            console.error("Error RPC vectorial/híbrido:", error.message, error.details);
-            debugInfo.rpcParamErrors = error;
+        if (rpcError) {
+            console.error("Error RPC vectorial/híbrido:", rpcError.message, rpcError.details);
+            debugInfo.rpcParamErrors = rpcError;
             return NextResponse.json(
                 {
-                    error: `Supabase RPC Error: ${error.message} - ${error.details}`,
+                    error: `Supabase RPC Error: ${rpcError.message} - ${rpcError.details}`,
                     debug: xDebug ? debugInfo : undefined,
                 },
                 { status: 500 }
             );
         }
 
-        const rawData = data || [];
         debugInfo.rowsLength = rawData.length;
-        console.log(`[ASK] Filas brutas de RPC: ${rawData.length}`);
 
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
@@ -374,21 +415,6 @@ export async function POST(req: Request) {
 
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
-        // --- Article-number detection (hoisted before evidence gate) ---------------
-        const articuloMencionadoMatch = question.match(
-            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
-        );
-        const articuloMencionado = articuloMencionadoMatch
-            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
-            : null;
-
-        const articuloRegex = articuloMencionado
-            ? (() => {
-                const safeNum = articuloMencionado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                // Exige el prefijo jurídico explícito (artículo/articulo/art./art) antes del número para evitar falsos positivos
-                return new RegExp(`\\bart(?:í|i)culo\\s+${safeNum}\\b|\\bart\\.?\\s*${safeNum}\\b`, 'i');
-            })()
-            : null;
         const articuloFoundInFragments = articuloRegex
             ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))
             : false;
