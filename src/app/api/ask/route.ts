@@ -383,7 +383,11 @@ export async function POST(req: Request) {
             : null;
 
         const articuloRegex = articuloMencionado
-            ? new RegExp(`\\b${articuloMencionado}\\b`)
+            ? (() => {
+                const safeNum = articuloMencionado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                // Exige el prefijo jurídico explícito (artículo/articulo/art./art) antes del número para evitar falsos positivos
+                return new RegExp(`\\bart(?:í|i)culo\\s+${safeNum}\\b|\\bart\\.?\\s*${safeNum}\\b`, 'i');
+            })()
             : null;
         const articuloFoundInFragments = articuloRegex
             ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))

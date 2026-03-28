@@ -1,7 +1,7 @@
 # FOTO FIJA — PROYECTO NORMATIVAS IA
 
-Última actualización: 2026-03-16  
-Estado: referencia oficial vigente del proyecto
+Última actualización: 2026-03-28  
+Estado: referencia oficial vigente del proyecto tras cierre del bloque de estabilización de sources, priorización y consultas por artículo exacto
 
 Este documento describe el **estado real del proyecto Normativas IA**.  
 Debe usarse como **referencia principal cuando se abra una nueva conversación o ventana de trabajo**.
@@ -77,14 +77,22 @@ El buscador jurídico **ya funciona en producción**.
 
 Capacidades actuales:
 
+Capacidades actuales:
+
 ✔ búsqueda semántica vectorial  
 ✔ búsqueda directa por artículo  
 ✔ recuperación de fragmentos jurídicos  
 ✔ generación de respuesta con RAG  
 ✔ visualización de fuentes exactas  
+✔ devolución correcta de `sources` desde backend  
+✔ consumo correcto de `sources` en frontend  
+✔ mapa normativo alimentado por fuentes reales  
 ✔ filtro por norma seleccionada  
+✔ priorización dinámica por metadata  
+✔ priorización mejorada para consultas de ocupación / pública concurrencia  
+✔ tolerancia a consultas con y sin tildes en detección por metadata  
 ✔ exclusión de fragmentos basura (`es_indice`)  
-✔ control de visibilidad por usuario  
+✔ control de visibilidad por usuario   
 
 ---
 
@@ -223,14 +231,95 @@ Además:
 - `max_tokens` aumentó de 300 a 500 para evitar truncamientos
 
 ---
+---
+
+## Exposición correcta de `sources` en `/api/ask`
+
+Antes, el backend podía construir correctamente el array de fuentes,
+pero no siempre lo devolvía de forma explícita en el payload final consumido por frontend.
+
+Ahora, `/api/ask` devuelve correctamente:
+
+- `ok`
+- `answer`
+- `data`
+- `sources`
+
+Esto permite que la interfaz reciba siempre las fuentes estructuradas cuando existen.
+
+---
+
+## Corrección del consumo de `sources` en frontend
+
+Antes, el frontend no aprovechaba correctamente `sources`
+y además aplicaba un filtrado agresivo por score que podía vaciar artificialmente la UI
+aunque backend sí hubiese recuperado fuentes válidas.
+
+Ahora:
+
+- frontend consume correctamente `sources`
+- se eliminó el filtrado duro por score en frontend
+- “Fuentes asociadas a la consulta” muestra datos reales
+- el panel derecho “Fuentes exactas” muestra datos reales
+- el mapa normativo puede construirse correctamente cuando hay fuentes
+
+---
+
+## Mejora de la priorización por metadata
+
+Se reforzó la detección previa por metadata en `/api/ask`.
+
+Mejoras aplicadas:
+
+- normalización a minúsculas
+- normalización de tildes
+- comparación más robusta que `includes()` en crudo
+- mantenimiento del flujo actual sin rehacer arquitectura
+
+Esto mejora la fijación previa de norma en consultas sensibles a variaciones ortográficas.
+
+---
+
+## Refuerzo de metadata en CTE-DB-SI
+
+Se amplió la metadata de la norma **CTE-DB-SI** para mejorar su priorización en consultas clave.
+
+Keywords añadidas:
+
+- `ocupación`
+- `pública concurrencia`
+- `aforo`
+- `evacuación`
+
+Esto permite priorizar correctamente CTE-DB-SI en consultas como:
+
+- “ocupación en locales de pública concurrencia”
+- “ocupacion en locales de publica concurrencia”
+
+---
+
+## Aislamiento de artículo exacto en consultas nominales
+
+Antes, en consultas como:
+
+“qué dice el artículo 5 del RIPCI”
+
+el sistema podía recuperar también artículos no solicitados de la misma norma por similitud semántica.
+
+Ahora, cuando el artículo pedido existe realmente en los fragmentos recuperados,
+el backend conserva prioritariamente ese artículo
+y evita arrastrar artículos distintos no necesarios.
+
+Esto reduce el ruido jurídico en consultas por artículo exacto.
 
 # 5. Normas cargadas actualmente
 
-id	código	norma  
-15	RSCIEI	Reglamento de seguridad contra incendios en establecimientos industriales  
-17	CTE-DB-SI	Código Técnico de la Edificación — Documento Básico SI Seguridad en caso de incendio  
-18	RIPCI	Real Decreto 513/2017 — Reglamento de instalaciones de protección contra incendios  
-19	CTE-DB-SUA	Código Técnico de la Edificación — Documento Básico SUA Seguridad de utilización y accesibilidad
+Estado validado en pruebas reales recientes:
+
+- RSCIEI → cargado y disponible
+- CTE-DB-SI → validado y priorizado correctamente en consultas de ocupación / pública concurrencia
+- RIPCI → validado en consultas por artículo exacto y consultas funcionales
+- CTE-DB-SUA → validado en consultas de resbaladicidad y seguridad de uso
 ---
 
 # 6. Estructura de tablas
@@ -238,6 +327,8 @@ id	código	norma
 ## Tabla `normas`
 
 Columnas relevantes actuales:
+
+ Columnas relevantes actuales:
 
 id  
 titulo  
@@ -264,6 +355,9 @@ num_embeddings_generados
 document_hash  
 version_of  
 fecha_ingesta  
+materia  
+submateria  
+keywords   
 
 Regla de acceso:
 
@@ -400,7 +494,7 @@ Estado actual real:
 
 la RPC responde y devuelve resultados
 
-el ranking híbrido sigue necesitando ajuste fino para priorizar correctamente CTE-DB-SI frente a otras normas en consultas generales.
+el ranking híbrido sigue necesitando ajuste fino en consultas generales complejas entre normas relacionadas, aunque ya se ha corregido la priorización de CTE-DB-SI en consultas de ocupación / pública concurrencia.
 
 ---
 
@@ -468,11 +562,11 @@ Estas decisiones **no deben reabrirse salvo motivo técnico grave**.
 
 # 16. Problemas conocidos aún pendientes
 
-afinar ranking híbrido entre normas cargadas
+afinar ranking híbrido en consultas generales complejas entre normas relacionadas
 
-priorizar mejor CTE-DB-SI cuando se menciona explícitamente
+seguir reduciendo ruido inter-normativo en búsquedas globales
 
-revisar por qué algunas consultas del CTE devuelven otras normas como fuente principal
+mejorar priorización en casos aún no cubiertos por metadata estratégica
 
 subida automática desde BOE
 
@@ -480,21 +574,33 @@ gestión avanzada de versiones de normas
 
 normalización futura de algunos metadatos (`ambito`, etc.) para filtros estrictos
 
+tests automáticos de regresión
+
+mejor explotación de relaciones normativas y vigencia en respuesta final
+
 ---
 
 # 17. Próxima fase de desarrollo
 
-AMPLIAR LA PRIORIZACIÓN POR MATERIA
+CONSOLIDAR EL RANKING HÍBRIDO Y AMPLIAR CORPUS NORMATIVO
 
 El buscador ya usa el siguiente orden de prioridad:
 
 1. selector de norma del usuario  
 2. norma detectada en la pregunta  
-3. priorización por materia  
+3. priorización por metadata  
 4. búsqueda global  
 
-Actualmente la priorización por materia funciona de forma dinámica
-a partir de los campos metadata de la tabla `normas`.
+Tras esta fase, el sistema ya prioriza correctamente CTE-DB-SI
+en consultas de ocupación / pública concurrencia
+y distingue mejor consultas por artículo exacto.
+
+La siguiente fase debe centrarse en:
+
+- consolidar ranking híbrido en consultas generales complejas
+- ampliar metadata estratégica de nuevas normas
+- ampliar corpus normativo prioritario
+- ampliar batería de pruebas reales
 
 ---
 
@@ -543,11 +649,20 @@ materia
 submateria  
 keywords
 
-3. Si la pregunta contiene alguno de esos términos, el sistema:
+3. La detección previa normaliza:
+
+- minúsculas
+- tildes
+- términos de metadata
+- texto de la pregunta
+
+4. Si la pregunta contiene alguno de esos términos de forma suficientemente robusta, el sistema:
 
 - prioriza esa norma
 - fuerza `parsedNormaId`
 - ejecuta el RAG contra esa norma primero.
+
+Esto permite mejorar la detección incluso cuando el usuario escribe sin tildes.
 
 Este sistema permite que **cualquier norma nueva pueda autopriorizarse sin modificar el código**.
 
@@ -671,25 +786,31 @@ El sistema actual ya tiene:
 ✔ embeddings vectoriales  
 ✔ RAG funcional  
 ✔ filtrado por norma  
-✔ priorización dinámica por materia  
+✔ priorización dinámica por metadata  
 ✔ control de alucinaciones  
 ✔ estructura para relaciones normativas  
 ✔ estructura para control de vigencia  
 ✔ vista `vw_normas_vigencia` para consultas de vigencia  
-✔ normas reales cargadas: RSCIEI, RIPCI, CTE-DB-SI  
+✔ normas reales cargadas: RSCIEI, RIPCI, CTE-DB-SI, CTE-DB-SUA  
 ✔ búsqueda por artículo funcionando  
 ✔ reconstrucción de artículos en contexto  
 ✔ respuestas con estructura jurídica clara  
+✔ devolución estable de `sources`  
+✔ paneles de fuentes funcionando con datos reales  
+✔ mapa normativo funcionando con datos reales  
+✔ tolerancia a consultas con y sin tildes en detección por metadata  
+✔ consultas exactas por artículo sin arrastre de artículos no pedidos  
 
 Estado real del buscador:
 
-RSCIEI: cargado  
+RSCIEI: cargado y disponible  
 RIPCI: validado y funcionando  
-CTE-DB-SI: cargado, indexado y respondiendo, con ranking general todavía mejorable en algunas consultas
+CTE-DB-SI: validado, priorizado correctamente en consultas de ocupación / pública concurrencia y funcionando con y sin tildes en ese flujo  
+CTE-DB-SUA: validado y funcionando en consultas de resbaladicidad y seguridad de uso
 
 Conclusión:
 
-El sistema puede considerarse **MVP técnico funcional estable**, pendiente de ajustes de ranking entre normas y ampliación progresiva del corpus normativo.
+El sistema puede considerarse **MVP técnico funcional estable y notablemente más preciso** tras la corrección de `sources`, la estabilización del consumo en frontend, la mejora de priorización por metadata y el aislamiento de consultas por artículo exacto.
 
 ---
 
@@ -759,13 +880,13 @@ Esto permite que la norma se integre automáticamente en el sistema de priorizac
 
 # 25. Próximos pasos inmediatos del proyecto
 
-afinar respuestas del CTE en búsquedas globales
+afinar ranking híbrido en consultas generales complejas
 
-mejorar priorización automática por norma mencionada
-
-validar más consultas reales con las tres normas actuales
+validar más consultas reales con las cuatro normas actuales
 
 subir nuevas normas prioritarias una vez cerrada la estabilidad actual
+
+ampliar metadata estratégica de nuevas normas para mejorar priorización
 
 ---
 
@@ -815,6 +936,12 @@ Se ha validado completamente el funcionamiento del buscador jurídico en producc
 - consultas ambiguas entre normas → OK
 - nueva norma CTE-DB-SUA cargada e indexada → OK
 - recuperación de fragmentos jurídicos → OK
+- “qué dice el artículo 5 del RIPCI” → OK sin colarse artículo 12
+- “resbaladicidad de suelos” → OK con fuentes
+- “ocupación en locales de pública concurrencia” → OK con CTE-DB-SI priorizada
+- “ocupacion en locales de publica concurrencia” → OK sin tildes
+- “cada cuánto deben revisarse los extintores según el RIPCI” → OK
+- “qué clase de resbaladicidad debe tener un suelo interior seco” → OK
 
 Caso crítico resuelto:
 
@@ -834,10 +961,11 @@ Resultado:
 ## Estado del sistema tras esta fase
 
 ✔ RAG estable  
-✔ priorización correcta entre normas  
+✔ `sources` estable y consumido correctamente por frontend  
+✔ priorización correcta en casos validados  
 ✔ citas jurídicas fiables  
 ✔ control de “No consta” robusto  
-✔ comportamiento consistente en producción  
+✔ comportamiento consistente en producción   
 
 ---
 
@@ -867,15 +995,17 @@ convertir el sistema en una herramienta de consulta normativa profesional (no es
 
 IMPORTANTE:
 
-- Todos los cambios han sido SOLO de frontend
-- NO se ha modificado:
-  - backend
-  - /api/ask
-  - Supabase
+- La capa de interfaz profesional se implementó inicialmente en frontend
+- En una fase posterior también se hicieron ajustes mínimos y seguros en backend para estabilizar:
+  - `sources`
+  - priorización por metadata
+  - consultas por artículo exacto
+
+NO se ha rehecho:
   - RPC
-  - lógica de búsqueda
-  - RAG
-  - estructura de datos
+  - arquitectura general
+  - motor vectorial
+  - estructura base del proyecto
 
 La UI se ha adaptado sobre los componentes existentes:
 
@@ -995,11 +1125,12 @@ Estado actual real
 ✔ UI estable (sin pantallas vacías)
 ✔ fallback controlado
 
-❌ limitación crítica:
+Estado actual tras estabilización de `sources`:
 
-si sources = [] → el mapa no puede construirse
+✔ el mapa se construye correctamente cuando backend devuelve fuentes válidas
+✔ el bug principal de `sources` vacío en consultas válidas ha quedado resuelto
 
-Esto NO es un problema de frontend.
+La calidad del mapa sigue dependiendo de la calidad real de recuperación del backend.
 
 Interacción con el mapa (estado)
 
@@ -1024,16 +1155,50 @@ Conclusión técnica
 El mapa normativo:
 
 ✔ está correctamente implementado en frontend
-❌ está limitado por la calidad del backend RAG
+✔ ya recibe y muestra fuentes reales de forma estable en los casos validados
+✔ sigue dependiendo de la calidad real del backend RAG
 
-El siguiente salto del sistema NO es UI.
-
-👉 Es mejorar la recuperación (sources) desde backend.
+El siguiente salto del sistema no es resolver el bug de `sources`,
+sino seguir afinando calidad de recuperación en consultas más complejas.
 
 🔥 BLOQUE CLAVE
 
 A partir de ahora:
 
-calidad del sistema = calidad de sources
+calidad del sistema = calidad de recuperación + calidad de sources
+
+---
+
+# 32. BLOQUE COMPLETADO — ESTABILIZACIÓN DE SOURCES Y PRIORIZACIÓN
+
+Estado: COMPLETADO
+
+Se ha cerrado un bloque técnico de estabilización del buscador en producción.
+
+## Cambios completados
+
+✔ `/api/ask` devuelve correctamente `sources`  
+✔ frontend consume correctamente `sources`  
+✔ se eliminó el filtrado duro por score en frontend  
+✔ paneles de fuentes muestran datos reales  
+✔ mapa normativo se construye correctamente con fuentes válidas  
+✔ se reforzó la priorización por metadata  
+✔ se añadió normalización de tildes en detección por metadata  
+✔ CTE-DB-SI queda priorizada en consultas de ocupación / pública concurrencia  
+✔ el sistema responde bien con y sin tildes en ese flujo  
+✔ las consultas por artículo exacto ya no arrastran artículos no pedidos  
+
+## Pruebas finales superadas
+
+- qué dice el artículo 5 del RIPCI  
+- resbaladicidad de suelos  
+- ocupación en locales de pública concurrencia  
+- ocupacion en locales de publica concurrencia  
+- cada cuánto deben revisarse los extintores según el RIPCI  
+- qué clase de resbaladicidad debe tener un suelo interior seco  
+
+## Conclusión
+
+El sistema ha quedado sensiblemente más estable, más coherente y más fiable en producción tras esta fase.
 
 # FIN DE FOTO FIJA
