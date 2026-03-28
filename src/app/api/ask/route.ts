@@ -298,14 +298,6 @@ export async function POST(req: Request) {
             rpcParams.q_norma_id = validNormaId;
         }
 
-        if (question.toLowerCase().includes("ocupación en locales de pública concurrencia")) {
-            console.log("=== DEBUG OCUPACION PRE-RPC ===");
-            console.log("query:", question);
-            console.log("parsedNormaId:", parsedNormaId);
-            console.log("detectedNormaCodigo:", detectedNormaCodigo);
-            console.log("detectedMateria:", detectedMateria);
-        }
-
         let rpcQuery = supabase.rpc("buscar_norma_partes", rpcParams);
 
         if (parsedNormaId === null) {
@@ -329,17 +321,6 @@ export async function POST(req: Request) {
         }
 
         const { data, error } = await rpcQuery;
-
-        if (question.toLowerCase().includes("ocupación en locales de pública concurrencia")) {
-            console.log("=== DEBUG OCUPACION RPC RAW ===");
-            console.log("rpc_result_count:", data?.length ?? 0);
-            console.log("rpc_first_10_normas:", (data || []).slice(0,10).map((x:any) => ({
-                id: x.id,
-                norma_id: x.norma_id,
-                seccion: x.seccion,
-                similarity: x.similarity ?? x.score ?? x.distance ?? null
-            })));
-        }
 
         console.log("=== DEBUG RPC RESULT ===");
         console.log("query:", question);
@@ -366,17 +347,6 @@ export async function POST(req: Request) {
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
         );
-
-        if (question.toLowerCase().includes("ocupación en locales de pública concurrencia")) {
-            console.log("=== DEBUG OCUPACION VALID DATA ===");
-            console.log("validData_count:", validData?.length ?? 0);
-            console.log("validData_first_10_normas:", (validData || []).slice(0,10).map((x:any) => ({
-                id: x.id,
-                norma_id: x.norma_id,
-                seccion: x.seccion,
-                similarity: x.similarity ?? x.score ?? x.distance ?? null
-            })));
-        }
 
         console.log("=== DEBUG VALID DATA ===");
         console.log("validData_count:", validData?.length);
@@ -663,17 +633,6 @@ Reglas adicionales:
                 titulo_articulo,
             };
         });
-
-        if (question.toLowerCase().includes("ocupación en locales de pública concurrencia")) {
-            console.log("=== DEBUG OCUPACION FINAL SOURCES ===");
-            console.log("sources_count:", processedData?.length ?? 0);
-            console.log("sources_first_10_normas:", (processedData || []).slice(0,10).map((x:any) => ({
-                id: x.id,
-                norma_id: x.norma_id,
-                seccion: x.seccion,
-                similarity: x.similarity ?? x.score ?? x.distance ?? null
-            })));
-        }
 
         if (isLiteralMatch && processedData.length > 0) {
             answer = processedData[0].texto || processedData[0].content || "Fragmento literal no encontrado.";
