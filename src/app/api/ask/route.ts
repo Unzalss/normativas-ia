@@ -449,14 +449,21 @@ export async function POST(req: Request) {
         // --- Article-number boost -------------------------------------------------
         // Re-sort so fragments matching the mentioned article float to the top
         if (articuloMencionado && articuloRegex) {
-            validData.sort((a: any, b: any) => {
-                const matchA = articuloRegex.test(String(a.seccion || ""));
-                const matchB = articuloRegex.test(String(b.seccion || ""));
-                if (matchA && !matchB) return -1;
-                if (!matchA && matchB) return 1;
-                return getScore(b) - getScore(a); // fallback: score descending
-            });
-            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → reordenados ${validData.length} fragmentos (found=${articuloFoundInFragments})`);
+            if (articuloFoundInFragments) {
+                // Si encontramos el artículo exacto, podamos la lista para retener *solo* esos fragmentos 
+                // y evitar que se cuelen otros artículos irrelevantes (ej. sale art 12 cuando piden art 5).
+                const matchedFrags = validData.filter((f: any) => articuloRegex.test(String(f.seccion || "")));
+                validData.splice(0, validData.length, ...matchedFrags);
+            } else {
+                validData.sort((a: any, b: any) => {
+                    const matchA = articuloRegex.test(String(a.seccion || ""));
+                    const matchB = articuloRegex.test(String(b.seccion || ""));
+                    if (matchA && !matchB) return -1;
+                    if (!matchA && matchB) return 1;
+                    return getScore(b) - getScore(a); // fallback: score descending
+                });
+            }
+            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → filtrados/reordenados ${validData.length} fragmentos (found=${articuloFoundInFragments})`);
         }
         // --------------------------------------------------------------------------
 
