@@ -309,32 +309,56 @@ export async function POST(req: Request) {
             ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
             : null;
 
-        const articuloRegex = articuloMencionado
-            ? (() => {
-                const safeNum = articuloMencionado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                return new RegExp(`\\bart(?:í|i)culo\\s+${safeNum}\\b|\\bart\\.?\\s*${safeNum}\\b`, 'i');
-            })()
-            : null;
-
         let rawData: any[] = [];
         let rpcError: any = null;
         let usedDirectFetch = false;
 
-        if (validNormaId !== null && articuloMencionado && articuloRegex) {
+        const articuloRegex = null; // Deprecated variable, logic uses explicit regexes locally
+
+        if (validNormaId !== null && articuloMencionado) {
+            const artNum = articuloMencionado.toLowerCase().trim();
+            const safeArtNum = artNum.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+            const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
+
             // Intentar primero búsqueda nominal directa en Supabase obviando pgvector
             const { data: exactData } = await supabase
                 .from("normas_partes")
-                .select("id, norma_id, seccion, articulo, texto, content, capitulo_detectado, titulo_articulo, orden")
+                .select("id, norma_id, seccion, articulo, article_number, texto, content, capitulo_detectado, titulo_articulo, orden")
                 .eq("norma_id", validNormaId)
-                .ilike("seccion", `%${articuloMencionado}%`)
-                .limit(20);
+                .or(`seccion.ilike.%${artNum}%,articulo.ilike.%${artNum}%,article_number.ilike.%${artNum}%`)
+                .limit(50); // Generous limit to catch all fragments of the article
 
             if (exactData && exactData.length > 0) {
-                const matchedExact = exactData.filter((f: any) => articuloRegex.test(String(f.seccion || "")));
+                const isArticleStrictMatch = (f: any) => {
+                    const sec = String(f.seccion || "");
+                    const ar = String(f.articulo || "");
+                    const an = String(f.article_number || "");
+                    if (explicitArtRegex.test(sec)) return true;
+                    if (explicitArtRegex.test(ar)) return true;
+                    if (an.toLowerCase().trim() === artNum) return true;
+                    if (ar.toLowerCase().trim() === artNum) return true;
+                    const numRegex = new RegExp(`\\\\b${safeArtNum}\\\\b`, 'i');
+                    if (numRegex.test(sec) || numRegex.test(ar)) return true;
+                    return false;
+                };
+
+                const isArticleFallbackMatch = (f: any) => {
+                    const text = String(f.texto || f.content || "");
+                    const looseArtRegex = new RegExp(`\\\\bart(?:[íi]c(?:ulo)?)?\\\\.?\\\\s*${safeArtNum}\\\\b`, 'i');
+                    return looseArtRegex.test(text);
+                };
+
+                let matchedExact = exactData.filter(isArticleStrictMatch);
+                
+                if (matchedExact.length === 0) {
+                    matchedExact = exactData.filter(isArticleFallbackMatch);
+                }
+
                 if (matchedExact.length > 0) {
+                    matchedExact.sort((a: any, b: any) => (a.id ?? 0) - (b.id ?? 0));
                     rawData = matchedExact.map(f => ({ ...f, similarity: 1.0, score: 1.0 }));
                     usedDirectFetch = true;
-                    console.log(`[ASK] Búsqueda nominal directa exitosa para artículo ${articuloMencionado}: recuperados ${matchedExact.length} fragmentos estrictos.`);
+                    console.log(`[ASK] Búsqueda nominal directa exitosa para artículo ${artNum}: recuperados ${matchedExact.length} fragmentos. RPC OMITIDA.`);
                 }
             }
         }
