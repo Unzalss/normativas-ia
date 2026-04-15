@@ -727,21 +727,29 @@ Reglas adicionales:
 
         const isNoInfo = negativePatterns.some((p) => answerLower.includes(p));
 
+        let finalAnswer = isNoInfo ? "No consta en las normas consultadas." : answer;
+        let finalDataArr = isNoInfo ? [] : processedData;
+
+        // Última comprobación de seguridad estructural exigida por la foto fija
+        if (!finalAnswer || finalAnswer.trim() === "" || finalDataArr.length === 0) {
+            finalAnswer = "No consta en las normas consultadas.";
+            finalDataArr = [];
+        }
+
         const okPayload: any = {
             ok: true,
-            answer: isNoInfo ? "No consta en las normas consultadas." : answer,
-            data: isNoInfo ? [] : processedData,
-            sources: isNoInfo ? [] : processedData,
+            answer: finalAnswer,
+            data: finalDataArr,
+            sources: finalDataArr,
         };
 
-        if (isNoInfo) {
-            okPayload.sources = [];
+        if (finalDataArr.length === 0) {
             okPayload.highlights = [];
         }
 
         console.log("=== DEBUG SOURCES ===");
-        console.log("sources_count:", processedData?.length);
-        console.log("sources:", processedData);
+        console.log("sources_count:", finalDataArr?.length);
+        console.log("sources:", finalDataArr);
 
         if (xDebug) okPayload.debug = debugInfo;
 
