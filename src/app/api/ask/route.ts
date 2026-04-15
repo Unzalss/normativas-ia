@@ -313,7 +313,9 @@ export async function POST(req: Request) {
         let rpcError: any = null;
         let usedDirectFetch = false;
 
-        const articuloRegex = null; // Deprecated variable, logic uses explicit regexes locally
+        const articuloRegex: RegExp | null = articuloMencionado
+            ? new RegExp(`art[íi]?c?\\\\.?\\\\s*${articuloMencionado.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, "i")
+            : null;
 
         if (validNormaId !== null && articuloMencionado) {
             const artNum = articuloMencionado.toLowerCase().trim();
@@ -465,7 +467,7 @@ export async function POST(req: Request) {
 
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
 
-        const articuloFoundInFragments = articuloRegex
+        const articuloFoundInFragments = (articuloRegex instanceof RegExp)
             ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))
             : false;
 
