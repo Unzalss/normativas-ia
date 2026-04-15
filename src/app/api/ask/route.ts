@@ -461,21 +461,28 @@ export async function POST(req: Request) {
 
         // --- Article-number boost -------------------------------------------------
         // Re-sort or strictly filter so fragments matching the mentioned article float to the top
-        if (articuloMencionado && articuloRegex) {
+        if (articuloMencionado) {
+            const artNum = articuloMencionado.toLowerCase().trim();
+            const safeArtNum = artNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            
+            // Regex explícito para detectar "artículo 3", "art. 3", "art 3" (tolerante)
+            const explicitArtRegex = new RegExp(`\\bart(?:[íi]culo|iculo|icul|ic|\\.?)?\\s*${safeArtNum}\\b`, 'i');
+
             const isArticleStrictMatch = (f: any) => {
                 const sec = String(f.seccion || "");
                 const ar = String(f.articulo || "");
                 const an = String(f.article_number || "");
                 
-                // 1) Match explícito con la regex
-                if (articuloRegex.test(sec)) return true;
-                if (articuloRegex.test(ar)) return true;
+                // 1) Match explícito con la regex tolerante
+                if (explicitArtRegex.test(sec)) return true;
+                if (explicitArtRegex.test(ar)) return true;
                 
-                // 2) Match estricto del núm de artículo con el campo normalizado
-                if (an.toLowerCase().trim() === articuloMencionado.toLowerCase().trim()) return true;
+                // 2) Match estricto directamente con article_number o articulo aislado
+                if (an.toLowerCase().trim() === artNum) return true;
+                if (ar.toLowerCase().trim() === artNum) return true;
                 
-                // 3) Fallback permisivo de contención por palabras en seccion/articulo
-                const numRegex = new RegExp(`\\b${articuloMencionado.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
+                // 3) Fallback permisivo de contención del número aislado en seccion o articulo
+                const numRegex = new RegExp(`\\b${safeArtNum}\\b`, 'i');
                 if (numRegex.test(sec) || numRegex.test(ar)) return true;
                 
                 return false;
@@ -483,26 +490,28 @@ export async function POST(req: Request) {
 
             const isArticleFallbackMatch = (f: any) => {
                 const text = String(f.texto || f.content || "");
-                return articuloRegex.test(text);
+                // Regex muy relajado para el interior del texto: /art[íi]?c?\.?\s*3/i etc.
+                const looseArtRegex = new RegExp(`\\bart(?:[íi]c(?:ulo)?)?\\.?\\s*${safeArtNum}\\b`, 'i');
+                return looseArtRegex.test(text);
             };
 
             const strictMatchedFrags = validData.filter(isArticleStrictMatch);
 
             if (strictMatchedFrags.length > 0) {
                 validData.splice(0, validData.length, ...strictMatchedFrags);
-                console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${strictMatchedFrags.length} fragmentos ESTRICTOS. Resto ignorados.`);
+                console.log(`[BOOST] Artículo mencionado: ${artNum} → aislados ${strictMatchedFrags.length} fragmentos ESTRICTOS. Resto ignorados.`);
             } else {
                 // Fallback: buscamos el artículo dentro del texto del fragmento
                 const fallbackMatchedFrags = validData.filter(isArticleFallbackMatch);
 
                 if (fallbackMatchedFrags.length > 0) {
                     validData.splice(0, validData.length, ...fallbackMatchedFrags);
-                    console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${fallbackMatchedFrags.length} fragmentos por FALLBACK (en texto). Resto ignorados.`);
+                    console.log(`[BOOST] Artículo mencionado: ${artNum} → aislados ${fallbackMatchedFrags.length} fragmentos por FALLBACK (en texto). Resto ignorados.`);
                 } else {
                     if (validNormaId !== null) {
                         // Cortafuegos estricto: norma clara y no se encontró el artículo en ningún lado -> vaciamos resultados
                         validData.splice(0, validData.length);
-                        console.log(`[BOOST] Artículo ${articuloMencionado} NO encontrado y norma fija. Vaciando resultados (cortafuegos total).`);
+                        console.log(`[BOOST] Artículo ${artNum} NO encontrado y norma fija. Vaciando resultados (cortafuegos total).`);
                     } else {
                         // Norma ambigua: ordenamos para no destruir la búsqueda fallback
                         validData.sort((a: any, b: any) => getScore(b) - getScore(a));
