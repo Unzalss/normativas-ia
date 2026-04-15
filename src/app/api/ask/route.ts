@@ -148,6 +148,9 @@ export async function POST(req: Request) {
             const { data: candidateNormas } = await normMateriaQuery;
 
             if (candidateNormas && candidateNormas.length > 0) {
+                let bestMatchScore = 0;
+                let bestNormaCandidate = null;
+
                 for (const norma of candidateNormas) {
                     let keywordsArray: string[] = [];
 
@@ -171,23 +174,32 @@ export async function POST(req: Request) {
                         .map(normalizeText)
                         .filter((t) => t.length > 2);
 
-                    const hasMatch = termsToMatch.some((kw) => {
-                        if (kw === "pci") return /\bpci\b/i.test(questionLower);
-                        
-                        // Uso de regex con límites de palabra (\b) para atrapar coincidencias exactas y evitar falsos positivos
-                        // Se han escapado caracteres especiales por si la keyword los incluyera
-                        const safeKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(`\\b${safeKw}\\b`, "i");
-                        return regex.test(questionNormalized);
-                    });
+                    let normMatchScore = 0;
 
-                    if (hasMatch) {
-                        parsedNormaId = norma.id;
-                        detectedMateria = norma.materia || "detectada";
-                        detectedNormaPorMateria = norma.codigo;
-                        detectedNormaIdPorMateria = norma.id;
-                        break;
+                    for (const kw of termsToMatch) {
+                        if (kw === "pci" && /\bpci\b/i.test(questionLower)) {
+                            normMatchScore++;
+                        } else {
+                            // Uso de regex con límites de palabra (\b) para atrapar coincidencias exactas
+                            const safeKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`\\b${safeKw}\\b`, "i");
+                            if (regex.test(questionNormalized)) {
+                                normMatchScore++;
+                            }
+                        }
                     }
+
+                    if (normMatchScore > bestMatchScore) {
+                        bestMatchScore = normMatchScore;
+                        bestNormaCandidate = norma;
+                    }
+                }
+
+                if (bestNormaCandidate && bestMatchScore > 0) {
+                    parsedNormaId = bestNormaCandidate.id;
+                    detectedMateria = bestNormaCandidate.materia || "detectada";
+                    detectedNormaPorMateria = bestNormaCandidate.codigo;
+                    detectedNormaIdPorMateria = bestNormaCandidate.id;
                 }
             }
         }
@@ -216,10 +228,11 @@ export async function POST(req: Request) {
             for (const rule of buildingTypeRules) {
                 const matched = rule.keywords.some((kw) => qLower.includes(kw));
                 if (matched) {
+                    const flexibleCodePattern = `%${rule.codigo.replace(/-/g, '%')}%`;
                     let btQuery = supabase
                         .from("normas")
                         .select("id, owner_user_id")
-                        .ilike("codigo", rule.codigo)
+                        .ilike("codigo", flexibleCodePattern)
                         .limit(1);
 
                     if (userId) {
@@ -447,23 +460,43 @@ export async function POST(req: Request) {
         console.log(`[ASK] → Continuando con ${validData.length} fragmentos (bypass=${bypassEvidence})`);
 
         // --- Article-number boost -------------------------------------------------
-        // Re-sort so fragments matching the mentioned article float to the top
+        // Re-sort or strictly filter so fragments matching the mentioned article float to the top
         if (articuloMencionado && articuloRegex) {
-            if (articuloFoundInFragments) {
-                // Si encontramos el artículo exacto, podamos la lista para retener *solo* esos fragmentos 
-                // y evitar que se cuelen otros artículos irrelevantes (ej. sale art 12 cuando piden art 5).
-                const matchedFrags = validData.filter((f: any) => articuloRegex.test(String(f.seccion || "")));
+            const isArticleStrictMatch = (f: any) => {
+                const sec = String(f.seccion || "");
+                const ar = String(f.articulo || "");
+                const an = String(f.article_number || "");
+                
+                // 1) Match explícito con la regex
+                if (articuloRegex.test(sec)) return true;
+                if (articuloRegex.test(ar)) return true;
+                
+                // 2) Match estricto del núm de artículo con el campo normalizado
+                if (an.toLowerCase().trim() === articuloMencionado.toLowerCase().trim()) return true;
+                
+                // 3) Fallback permisivo de contención por palabras en seccion/articulo
+                const numRegex = new RegExp(`\\b${articuloMencionado.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
+                if (numRegex.test(sec) || numRegex.test(ar)) return true;
+                
+                return false;
+            };
+
+            const matchedFrags = validData.filter(isArticleStrictMatch);
+
+            if (matchedFrags.length > 0) {
                 validData.splice(0, validData.length, ...matchedFrags);
+                console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${matchedFrags.length} fragmentos. Resto ignorados.`);
             } else {
-                validData.sort((a: any, b: any) => {
-                    const matchA = articuloRegex.test(String(a.seccion || ""));
-                    const matchB = articuloRegex.test(String(b.seccion || ""));
-                    if (matchA && !matchB) return -1;
-                    if (!matchA && matchB) return 1;
-                    return getScore(b) - getScore(a); // fallback: score descending
-                });
+                if (validNormaId !== null) {
+                    // Cortafuegos estricto: norma clara y no se encontró el artículo -> vaciamos resultados para provocar "No consta"
+                    validData.splice(0, validData.length);
+                    console.log(`[BOOST] Artículo ${articuloMencionado} NO encontrado y norma fija. Vaciando resultados (cortafuegos).`);
+                } else {
+                    // Norma ambigua: ordenamos para no destruir la búsqueda fallback
+                    validData.sort((a: any, b: any) => getScore(b) - getScore(a));
+                    console.log(`[BOOST] Artículo no encontrado pero norma=null, ordenando por defecto.`);
+                }
             }
-            console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → filtrados/reordenados ${validData.length} fragmentos (found=${articuloFoundInFragments})`);
         }
         // --------------------------------------------------------------------------
 
