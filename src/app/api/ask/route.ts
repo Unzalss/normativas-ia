@@ -317,7 +317,15 @@ export async function POST(req: Request) {
             ? new RegExp(`art[íi]?c?\\\\.?\\\\s*${articuloMencionado.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, "i")
             : null;
 
-        if (validNormaId !== null && articuloMencionado) {
+        const shouldUseDirectFetch = Boolean(validNormaId !== null && articuloMencionado);
+        console.log("\\n[DIAG-DIRECT-FETCH] precheck", {
+            validNormaId,
+            articleNumber: articuloMencionado,
+            shouldUseDirectFetch
+        });
+
+        if (shouldUseDirectFetch) {
+            console.log("[DIAG-DIRECT-FETCH] entered", { validNormaId, articleNumber: articuloMencionado });
             const artNum = articuloMencionado.toLowerCase().trim();
             const safeArtNum = artNum.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
             const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
@@ -510,7 +518,7 @@ export async function POST(req: Request) {
 
         // --- Article-number boost -------------------------------------------------
         // Re-sort or strictly filter so fragments matching the mentioned article float to the top
-        if (articuloMencionado) {
+        if (articuloMencionado && !usedDirectFetch) {
             const artNum = articuloMencionado.toLowerCase().trim();
             const safeArtNum = artNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             
