@@ -323,14 +323,24 @@ export async function POST(req: Request) {
             const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
 
             // Intentar primero búsqueda nominal directa en Supabase obviando pgvector
-            const { data: exactData } = await supabase
+            // Usamos un filtro OR inteligente para evitar saturar el limit con falsos positivos de "3"
+            const { data: exactData, error: exactError } = await supabase
                 .from("normas_partes")
                 .select("id, norma_id, seccion, articulo, article_number, texto, content, capitulo_detectado, titulo_articulo, orden")
                 .eq("norma_id", validNormaId)
-                .or(`seccion.ilike.%${artNum}%,articulo.ilike.%${artNum}%,article_number.ilike.%${artNum}%`)
-                .limit(50); // Generous limit to catch all fragments of the article
+                .or(`article_number.eq.${artNum},articulo.ilike.%art%${artNum}%,seccion.ilike.%art%${artNum}%`)
+                .order('orden', { ascending: true })
+                .limit(50);
+
+            console.log(`\\n[DIAG-DIRECT-FETCH] Buscando artículo ${artNum} en norma ${validNormaId}`);
+            if (exactError) console.error(`[DIAG-DIRECT-FETCH] Error DB:`, exactError.message);
 
             if (exactData && exactData.length > 0) {
+                console.log(`[DIAG-DIRECT-FETCH] Filas devueltas por consulta directa: ${exactData.length}`);
+                exactData.forEach(r => {
+                    console.log(`  -> id: ${r.id}, article_number: "${r.article_number}", articulo: "${r.articulo}", seccion: "${r.seccion}"`);
+                });
+
                 const isArticleStrictMatch = (f: any) => {
                     const sec = String(f.seccion || "");
                     const ar = String(f.articulo || "");
