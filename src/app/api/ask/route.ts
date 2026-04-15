@@ -481,20 +481,33 @@ export async function POST(req: Request) {
                 return false;
             };
 
-            const matchedFrags = validData.filter(isArticleStrictMatch);
+            const isArticleFallbackMatch = (f: any) => {
+                const text = String(f.texto || f.content || "");
+                return articuloRegex.test(text);
+            };
 
-            if (matchedFrags.length > 0) {
-                validData.splice(0, validData.length, ...matchedFrags);
-                console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${matchedFrags.length} fragmentos. Resto ignorados.`);
+            const strictMatchedFrags = validData.filter(isArticleStrictMatch);
+
+            if (strictMatchedFrags.length > 0) {
+                validData.splice(0, validData.length, ...strictMatchedFrags);
+                console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${strictMatchedFrags.length} fragmentos ESTRICTOS. Resto ignorados.`);
             } else {
-                if (validNormaId !== null) {
-                    // Cortafuegos estricto: norma clara y no se encontró el artículo -> vaciamos resultados para provocar "No consta"
-                    validData.splice(0, validData.length);
-                    console.log(`[BOOST] Artículo ${articuloMencionado} NO encontrado y norma fija. Vaciando resultados (cortafuegos).`);
+                // Fallback: buscamos el artículo dentro del texto del fragmento
+                const fallbackMatchedFrags = validData.filter(isArticleFallbackMatch);
+
+                if (fallbackMatchedFrags.length > 0) {
+                    validData.splice(0, validData.length, ...fallbackMatchedFrags);
+                    console.log(`[BOOST] Artículo mencionado: ${articuloMencionado} → aislados ${fallbackMatchedFrags.length} fragmentos por FALLBACK (en texto). Resto ignorados.`);
                 } else {
-                    // Norma ambigua: ordenamos para no destruir la búsqueda fallback
-                    validData.sort((a: any, b: any) => getScore(b) - getScore(a));
-                    console.log(`[BOOST] Artículo no encontrado pero norma=null, ordenando por defecto.`);
+                    if (validNormaId !== null) {
+                        // Cortafuegos estricto: norma clara y no se encontró el artículo en ningún lado -> vaciamos resultados
+                        validData.splice(0, validData.length);
+                        console.log(`[BOOST] Artículo ${articuloMencionado} NO encontrado y norma fija. Vaciando resultados (cortafuegos total).`);
+                    } else {
+                        // Norma ambigua: ordenamos para no destruir la búsqueda fallback
+                        validData.sort((a: any, b: any) => getScore(b) - getScore(a));
+                        console.log(`[BOOST] Artículo no encontrado pero norma=null, ordenando por defecto.`);
+                    }
                 }
             }
         }
