@@ -376,6 +376,19 @@ export async function POST(req: Request) {
             rawData = data || [];
             rpcError = error;
             console.log(`[ASK] Filas brutas de RPC: ${rawData.length}`);
+            
+            if (articuloMencionado) {
+                console.log("\n[DIAG-ARTICLE] ==== INICIO DE DIAGNÓSTICO DE ARTÍCULO ====");
+                console.log(`[DIAG-ARTICLE] Pregunta Original: "${question}"`);
+                console.log(`[DIAG-ARTICLE] Norma (detectedNormaCodigo: ${detectedNormaCodigo}, parsedNormaId: ${parsedNormaId}, validNormaId: ${validNormaId})`);
+                console.log(`[DIAG-ARTICLE] Artículo detectado crudo: "${articuloMencionado}", Numero limpio: "${articuloMencionado.toLowerCase().trim()}"`);
+                console.log(`[DIAG-ARTICLE] Filas traídas de RPC (total): ${rawData.length}`);
+                console.log(`[DIAG-ARTICLE] Muestra de las primeras 10 filas devueltas:`);
+                rawData.slice(0, 10).forEach((row: any, i: number) => {
+                    const textoShort = String(row.texto || row.content || "").substring(0, 120).replace(/\n/g, '\\n');
+                    console.log(`  [Fila ${i}] id: ${row.id}, norma_id: ${row.norma_id}, seccion: "${row.seccion}", articulo: "${row.articulo}", article_number: "${row.article_number}", snippet: "${textoShort}"`);
+                });
+            }
         }
 
         console.log("=== RESULT LOG ===");
@@ -496,6 +509,11 @@ export async function POST(req: Request) {
             };
 
             const strictMatchedFrags = validData.filter(isArticleStrictMatch);
+            const fallbackMatchedFrags = validData.filter(isArticleFallbackMatch);
+
+            console.log(`[DIAG-ARTICLE] Total filas antes de filtrar (validData.length): ${validData.length}`);
+            console.log(`[DIAG-ARTICLE] Filas que pasan match ESTRICTO: ${strictMatchedFrags.length}`);
+            console.log(`[DIAG-ARTICLE] Filas que pasan match FALLBACK (texto): ${fallbackMatchedFrags.length}`);
 
             if (strictMatchedFrags.length > 0) {
                 validData.splice(0, validData.length, ...strictMatchedFrags);
@@ -754,6 +772,13 @@ Reglas adicionales:
 
         if (finalDataArr.length === 0) {
             okPayload.highlights = [];
+        }
+
+        if (articuloMencionado) {
+            console.log(`\n[DIAG-ARTICLE] ==== RESULTADO FINAL ====`);
+            console.log(`[DIAG-ARTICLE] validData final length: ${validData.length}`);
+            console.log(`[DIAG-ARTICLE] processedData final length: ${processedData.length}`);
+            console.log(`[DIAG-ARTICLE] answer length: ${finalAnswer.length}, snippet: "${finalAnswer.substring(0, 50)}..."`);
         }
 
         console.log("=== DEBUG SOURCES ===");
