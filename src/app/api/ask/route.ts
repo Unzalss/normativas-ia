@@ -764,7 +764,17 @@ Antes de responder, clasifica internamente la pregunta:
 
 Cuando el contexto contenga información normativa concreta (valores, medidas, condiciones, frecuencias o requisitos técnicos), debes responder con ese dato exacto y no con una explicación general.
 
-Si el contexto incluye varias condiciones diferenciadas (por ejemplo, distintos tipos de mantenimiento), debes enumerarlas claramente en lugar de resumirlas.`,
+Si el contexto incluye varias condiciones diferenciadas (por ejemplo, distintos tipos de mantenimiento), debes enumerarlas claramente en lugar de resumirlas.
+
+Cuando la pregunta implique comparar dos o más casos (por ejemplo, mantenimiento trimestral vs anual), debes estructurar la respuesta claramente separando cada caso, usando formato tipo:
+
+- Mantenimiento trimestral:
+  ...
+
+- Mantenimiento anual:
+  ...
+
+No mezclar ambos en un mismo párrafo.`,
                         },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` },
                     ],
