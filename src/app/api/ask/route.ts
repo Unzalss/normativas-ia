@@ -324,6 +324,59 @@ export async function POST(req: Request) {
             shouldUseDirectFetch
         });
 
+        const assembleExactArticleFragments = (fragments: any[], requestedArticleNumber: string | null) => {
+            if (!requestedArticleNumber || !Array.isArray(fragments) || fragments.length === 0) return null;
+
+            const requested = requestedArticleNumber.toLowerCase().trim();
+            const exactFragments = fragments.filter((fragment: any) =>
+                String(fragment.article_number || "").toLowerCase().trim() === requested
+            );
+
+            if (exactFragments.length === 0) return null;
+
+            const numericValue = (value: any) => {
+                const n = Number(value);
+                return Number.isFinite(n) ? n : null;
+            };
+
+            exactFragments.sort((a: any, b: any) => {
+                const ordenA = numericValue(a.orden);
+                const ordenB = numericValue(b.orden);
+
+                if (ordenA !== null && ordenB !== null && ordenA !== ordenB) return ordenA - ordenB;
+                if (ordenA !== null && ordenB === null) return -1;
+                if (ordenA === null && ordenB !== null) return 1;
+
+                const idA = numericValue(a.id);
+                const idB = numericValue(b.id);
+
+                if (idA !== null && idB !== null) return idA - idB;
+                if (idA !== null && idB === null) return -1;
+                if (idA === null && idB !== null) return 1;
+
+                return 0;
+            });
+
+            const seen = new Set<string>();
+            const cleanedTexts = exactFragments
+                .map((fragment: any) => String(fragment.texto || fragment.content || "").replace(/\s+/g, " ").trim())
+                .filter((text: string) => {
+                    if (!text || seen.has(text)) return false;
+                    seen.add(text);
+                    return true;
+                });
+
+            if (cleanedTexts.length === 0) return null;
+
+            const assembledText = cleanedTexts.join("\n\n");
+
+            return {
+                ...exactFragments[0],
+                texto: assembledText,
+                content: assembledText,
+            };
+        };
+
         if (shouldUseDirectFetch) {
             console.log("[DIAG-DIRECT-FETCH] entered", { validNormaId, articleNumber: articuloMencionado });
             const artNum = articuloMencionado.toLowerCase().trim();
@@ -375,7 +428,10 @@ export async function POST(req: Request) {
 
                 if (matchedExact.length > 0) {
                     matchedExact.sort((a: any, b: any) => (a.id ?? 0) - (b.id ?? 0));
-                    rawData = matchedExact.map(f => ({ ...f, similarity: 1.0, score: 1.0 }));
+                    const assembledExactArticle = assembleExactArticleFragments(matchedExact, artNum);
+                    rawData = assembledExactArticle
+                        ? [{ ...assembledExactArticle, similarity: 1.0, score: 1.0 }]
+                        : matchedExact.map(f => ({ ...f, similarity: 1.0, score: 1.0 }));
                     usedDirectFetch = true;
                     console.log(`[ASK] Búsqueda nominal directa exitosa para artículo ${artNum}: recuperados ${matchedExact.length} fragmentos. RPC OMITIDA.`);
                 }
