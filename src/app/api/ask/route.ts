@@ -754,7 +754,13 @@ Cita:
 Reglas adicionales:
 - Responde ÚNICAMENTE con información contenida en los fragmentos. No uses conocimiento externo ni inventes datos.
 - No mezcles normas que no figuren en los fragmentos recuperados.
-- Si la información no aparece en los fragmentos, responde exactamente: "No consta en las normas consultadas."`,
+- Si la información no aparece en los fragmentos, responde exactamente: "No consta en las normas consultadas."
+
+Antes de responder, clasifica internamente la pregunta:
+- Si pregunta qué norma aplica o qué normativa regula algo, responde identificando la norma principal y, si procede, normas secundarias.
+- Si compara obligaciones, plazos o condiciones, separa claramente cada caso.
+- Si varios artículos aparecen en el contexto, prioriza el que responda directamente y evita citar artículos irrelevantes.
+- Responde con criterio técnico concreto; no des respuestas genéricas si el contexto permite concretar.`,
                         },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` },
                     ],
