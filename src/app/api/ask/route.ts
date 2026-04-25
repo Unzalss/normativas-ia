@@ -324,12 +324,19 @@ export async function POST(req: Request) {
             shouldUseDirectFetch
         });
 
+        const normalizeArticleNumber = (value: any) => {
+            const raw = String(value || "").toLowerCase().trim();
+            const withoutArticlePrefix = raw.replace(/^art(?:ículo|iculo)?\.?\s*/i, "").trim();
+            const match = withoutArticlePrefix.match(/\d+[\w-]*/i);
+            return (match ? match[0] : withoutArticlePrefix).replace(/\.+$/g, "").trim();
+        };
+
         const assembleExactArticleFragments = (fragments: any[], requestedArticleNumber: string | null) => {
             if (!requestedArticleNumber || !Array.isArray(fragments) || fragments.length === 0) return null;
 
-            const requested = requestedArticleNumber.toLowerCase().trim();
+            const requested = normalizeArticleNumber(requestedArticleNumber);
             const exactFragments = fragments.filter((fragment: any) =>
-                String(fragment.article_number || "").toLowerCase().trim() === requested
+                normalizeArticleNumber(fragment.article_number) === requested
             );
 
             if (exactFragments.length === 0) return null;
@@ -357,8 +364,36 @@ export async function POST(req: Request) {
                 return 0;
             });
 
+            const contiguousGroups: any[][] = [];
+            for (const fragment of exactFragments) {
+                const lastGroup = contiguousGroups[contiguousGroups.length - 1];
+                const previous = lastGroup?.[lastGroup.length - 1];
+                const currentOrder = numericValue(fragment.orden);
+                const previousOrder = numericValue(previous?.orden);
+                const isContiguous = previous && currentOrder !== null && previousOrder !== null
+                    ? currentOrder - previousOrder <= 1
+                    : Boolean(previous);
+
+                if (!lastGroup || !isContiguous) {
+                    contiguousGroups.push([fragment]);
+                } else {
+                    lastGroup.push(fragment);
+                }
+            }
+
+            const hasArticlePartMarker = (fragment: any) =>
+                /-\s*Ap\./i.test(String(fragment.seccion || "")) ||
+                /-\s*Ap\./i.test(String(fragment.articulo || "")) ||
+                /-\s*Ap\./i.test(String(fragment.texto || fragment.content || ""));
+
+            const selectedGroup = contiguousGroups.length === 1
+                ? contiguousGroups[0]
+                : contiguousGroups.find((group) => group.length > 1 && group.some(hasArticlePartMarker));
+
+            if (!selectedGroup || selectedGroup.length === 0) return null;
+
             const seen = new Set<string>();
-            const cleanedTexts = exactFragments
+            const cleanedTexts = selectedGroup
                 .map((fragment: any) => String(fragment.texto || fragment.content || "").replace(/\s+/g, " ").trim())
                 .filter((text: string) => {
                     if (!text || seen.has(text)) return false;
@@ -371,7 +406,7 @@ export async function POST(req: Request) {
             const assembledText = cleanedTexts.join("\n\n");
 
             return {
-                ...exactFragments[0],
+                ...selectedGroup[0],
                 texto: assembledText,
                 content: assembledText,
             };
@@ -379,7 +414,7 @@ export async function POST(req: Request) {
 
         if (shouldUseDirectFetch) {
             console.log("[DIAG-DIRECT-FETCH] entered", { validNormaId, articleNumber: articuloMencionado });
-            const artNum = articuloMencionado.toLowerCase().trim();
+            const artNum = normalizeArticleNumber(articuloMencionado);
             const safeArtNum = artNum.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
             const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
 
