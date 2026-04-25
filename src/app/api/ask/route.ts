@@ -386,9 +386,25 @@ export async function POST(req: Request) {
                 /-\s*Ap\./i.test(String(fragment.articulo || "")) ||
                 /-\s*Ap\./i.test(String(fragment.texto || fragment.content || ""));
 
+            const isExactArticleHeader = (value: any) => {
+                const normalized = String(value || "")
+                    .replace(/\s*\[Bloque\s+\d+\]/gi, "")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .toLowerCase();
+
+                return normalized === `artículo ${requested}` || normalized === `articulo ${requested}`;
+            };
+
+            const exactHeaderGroup = contiguousGroups.find((group) =>
+                group.some((fragment: any) =>
+                    isExactArticleHeader(fragment.seccion) || isExactArticleHeader(fragment.articulo)
+                )
+            );
+
             const selectedGroup = contiguousGroups.length === 1
                 ? contiguousGroups[0]
-                : contiguousGroups.find((group) => group.length > 1 && group.some(hasArticlePartMarker));
+                : contiguousGroups.find((group) => group.length > 1 && group.some(hasArticlePartMarker)) || exactHeaderGroup;
 
             if (!selectedGroup || selectedGroup.length === 0) return null;
 
