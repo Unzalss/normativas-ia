@@ -330,13 +330,12 @@ export async function POST(req: Request) {
             const safeArtNum = artNum.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
             const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
 
-            // Intentar primero búsqueda nominal directa en Supabase obviando pgvector
-            // Usamos un filtro OR inteligente para evitar saturar el limit con falsos positivos de "3"
+            // Búsqueda nominal directa estricta en base de datos.
             const { data: exactData, error: exactError } = await supabase
                 .from("normas_partes")
-                .select("id, norma_id, seccion, articulo, article_number, texto, content, capitulo_detectado, titulo_articulo, orden")
+                .select("id, norma_id, seccion, articulo, article_number, texto, tipo, orden")
                 .eq("norma_id", validNormaId)
-                .or(`article_number.eq.${artNum},articulo.ilike.%art%${artNum}%,seccion.ilike.%art%${artNum}%`)
+                .eq("article_number", artNum)
                 .order('orden', { ascending: true })
                 .limit(50);
 
