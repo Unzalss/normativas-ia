@@ -760,7 +760,11 @@ Antes de responder, clasifica internamente la pregunta:
 - Si pregunta qué norma aplica o qué normativa regula algo, responde identificando la norma principal y, si procede, normas secundarias.
 - Si compara obligaciones, plazos o condiciones, separa claramente cada caso.
 - Si varios artículos aparecen en el contexto, prioriza el que responda directamente y evita citar artículos irrelevantes.
-- Responde con criterio técnico concreto; no des respuestas genéricas si el contexto permite concretar.`,
+- Responde con criterio técnico concreto; no des respuestas genéricas si el contexto permite concretar.
+
+Cuando el contexto contenga información normativa concreta (valores, medidas, condiciones, frecuencias o requisitos técnicos), debes responder con ese dato exacto y no con una explicación general.
+
+Si el contexto incluye varias condiciones diferenciadas (por ejemplo, distintos tipos de mantenimiento), debes enumerarlas claramente en lugar de resumirlas.`,
                         },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` },
                     ],
