@@ -1,6 +1,6 @@
 # FOTO FIJA — PROYECTO NORMATIVAS IA
 
-Última actualización: 2026-03-28  
+Última actualización: 2026-04-25  
 Estado: referencia oficial vigente del proyecto tras cierre del bloque de estabilización de sources, priorización y consultas por artículo exacto
 
 Este documento describe el **estado real del proyecto Normativas IA**.  
@@ -1175,6 +1175,77 @@ Estado: COMPLETADO
 
 Se ha cerrado un bloque técnico de estabilización del buscador en producción.
 
+# 33. BLOQUE COMPLETADO — DIRECT FETCH POR ARTÍCULO EXACTO
+
+Estado: COMPLETADO EN PRODUCCIÓN
+
+Se ha corregido la vía rápida de recuperación directa cuando el usuario pregunta por un artículo concreto.
+
+Ejemplo validado:
+
+"artículo 3 del RSCIEI"
+
+Problema detectado:
+
+- la query de direct fetch usaba una columna inexistente: capitulo_detectado
+- además usaba un .or(...) demasiado amplio
+- esto provocaba errores SQL o falsos positivos
+- el sistema acababa respondiendo "No consta en las normas consultadas."
+
+Corrección aplicada:
+
+- se eliminó capitulo_detectado de la query
+- se sustituyó el .or(...) por filtro exacto:
+  article_number = artNum
+- se mantiene filtro por norma_id
+- se validó con script:
+  node tools/test-direct-fetch.mjs
+
+Resultado actual:
+
+✔ la query directa devuelve fragmentos reales
+✔ producción ya no responde "No consta" para artículo 3 del RSCIEI
+✔ frontend recibe sources
+✔ panel de fuentes muestra datos reales
+✔ direct fetch queda operativo
+
+Pendiente detectado:
+
+- la respuesta puede mostrar fragmentos parciales del artículo
+- falta mejorar la reconstrucción completa y limpia del artículo solicitado
+- este será el siguiente bloque de trabajo con Codex
+
+# 34. BLOQUE COMPLETADO — ENSAMBLADO DE ARTÍCULOS EXACTOS CON CODEX
+
+Estado: IMPLEMENTADO Y DESPLEGADO EN PRODUCCIÓN
+
+Se ha mejorado el ensamblado de artículos cuando se activa el direct fetch por artículo exacto.
+
+Cambios aplicados:
+
+- normalización del número de artículo:
+  - "5." → "5"
+  - "art. 5" → "5"
+  - "Artículo 5" → "5"
+
+- agrupación de fragmentos por bloques contiguos
+- selección del bloque principal con contenido
+- fallback seguro si no se puede ensamblar
+- mantenimiento de `sources`
+- sin tocar SQL
+- sin tocar RPC `buscar_norma_partes`
+- sin tocar ranking general
+- sin tocar frontend
+
+Pruebas en producción:
+
+✔ "artículo 5 del RIPCI" funciona correctamente
+✔ "artículo 3 del RSCIEI" funciona, aunque el contenido depende de la calidad de ingesta actual del RSCIEI
+
+Pendiente:
+
+- revisar/reingestar RSCIEI más adelante si se quiere mejorar la limpieza exacta de ese artículo
+
 ## Cambios completados
 
 ✔ `/api/ask` devuelve correctamente `sources`  
@@ -1200,5 +1271,60 @@ Se ha cerrado un bloque técnico de estabilización del buscador en producción.
 ## Conclusión
 
 El sistema ha quedado sensiblemente más estable, más coherente y más fiable en producción tras esta fase.
+
+# 35. BLOQUE COMPLETADO — MEJORA DE PROMPT PARA PREGUNTAS REALES
+
+Estado: IMPLEMENTADO Y DESPLEGADO EN PRODUCCIÓN
+
+Se han añadido reglas al system prompt de `/api/ask` para mejorar respuestas a preguntas reales no basadas en artículo exacto.
+
+Cambios aplicados:
+
+- clasificación interna de la pregunta
+- identificación de consultas sobre normativa aplicable
+- separación clara de comparativas
+- prioridad al artículo que responde directamente
+- respuesta con criterio técnico concreto
+- uso de valores, medidas, condiciones y frecuencias cuando existan en el contexto
+- formato separado para comparativas tipo trimestral vs anual
+
+Pruebas realizadas:
+
+✔ qué normativa regula los sistemas de protección contra incendios
+✔ diferencia entre mantenimiento trimestral y anual de extintores
+✔ qué normativa aplica a un taller industrial en incendios
+
+Pendiente detectado:
+
+❌ qué anchura mínima deben tener las salidas de evacuación
+
+Conclusión:
+
+El prompt ya está suficientemente ajustado.
+El fallo pendiente no es de redacción, sino de recuperación / metadata / calidad de ingesta.
+
+---
+
+# 36. NUEVA FASE — VALIDACIÓN DE INGESTA DE NORMAS
+
+Estado: FASE ACTIVA
+
+Objetivo:
+
+validar que las normas subidas al sistema se cargan correctamente de principio a fin.
+
+Se debe comprobar:
+
+- que el texto se extrae bien
+- que los artículos salen limpios
+- que la fragmentación tiene sentido
+- que la metadata generada ayuda a encontrar la norma
+- que las preguntas reales recuperan fuentes correctas
+- que las consultas por artículo exacto funcionan tras la subida
+
+Regla:
+
+no mejorar código todavía.
+Primero validar comportamiento real con una norma subida.
 
 # FIN DE FOTO FIJA
