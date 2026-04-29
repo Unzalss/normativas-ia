@@ -36,9 +36,15 @@ export function aiPartToParsedFragment(part: AIStructuredPart): ParsedFragment {
     }
   }
 
+  let safeNumero: string | null = null;
+  if (part.numero) {
+    const numMatch = part.numero.match(/\d+/);
+    if (numMatch) safeNumero = numMatch[0];
+  }
+
   return {
     tipo: capitalizedTipo,
-    numero: part.numero,
+    numero: safeNumero,
     seccion: seccion,
     texto: part.texto_literal,
     articulo: articulo,
