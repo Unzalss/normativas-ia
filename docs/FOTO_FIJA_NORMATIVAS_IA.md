@@ -1,6 +1,6 @@
 # FOTO FIJA — PROYECTO NORMATIVAS IA
 
-Última actualización: 2026-04-25  
+Última actualización: 2026-04-30  
 Estado: referencia oficial vigente del proyecto tras cierre del bloque de estabilización de sources, priorización y consultas por artículo exacto
 
 Este documento describe el **estado real del proyecto Normativas IA**.  
@@ -1326,5 +1326,293 @@ Regla:
 
 no mejorar código todavía.
 Primero validar comportamiento real con una norma subida.
+
+---
+
+# 37. BLOQUE COMPLETADO — PRIMERA INGESTA REAL HÍBRIDA DE NORMA BOE
+
+Estado: VALIDADO EN LOCAL + INSERTADO EN SUPABASE
+
+Se ha validado una nueva estrategia de ingesta para normas reales del BOE.
+
+Norma usada en prueba:
+
+- RD-486-1997
+- Real Decreto 486/1997, disposiciones mínimas de seguridad y salud en los lugares de trabajo
+- BOE-A-1997-8669
+- PDF consolidado de 16 páginas
+
+## Problema detectado con la subida IA inicial
+
+La ruta nueva:
+
+`/api/upload-norma-ia`
+
+funcionaba correctamente con TXT pequeño, pero fallaba con PDF real por timeout en Vercel.
+
+Validaciones superadas por la ruta:
+
+✔ admin auth funciona  
+✔ token válido funciona  
+✔ protección por rol admin funciona  
+✔ validación de FormData funciona  
+✔ TXT pequeño sube correctamente  
+✔ detecta artículos y anexos  
+✔ inserta en `normas_partes`  
+✔ genera `ai_usage_logs`  
+✔ genera `norma_ingest_reports`  
+
+Error con PDF real:
+
+- `FUNCTION_INVOCATION_TIMEOUT`
+
+Conclusión:
+
+El problema no era permisos, Supabase ni embeddings.
+El problema era intentar procesar una norma real completa dentro de una sola request de Vercel.
+
+## Estrategias probadas y descartadas
+
+### 1. OpenAI copiando `texto_literal` completo
+
+Resultado:
+
+❌ demasiado lento  
+❌ respuestas grandes  
+❌ riesgo de timeout  
+❌ riesgo de pequeñas alteraciones del texto jurídico  
+
+### 2. OpenAI con `frase_inicio` / `frase_fin`
+
+Resultado:
+
+❌ `frase_fin` podía no coincidir literalmente  
+❌ la reconstrucción fallaba con PDFs BOE  
+❌ se detectaron frases finales inventadas o no localizables  
+
+Conclusión:
+
+OpenAI no debe ser responsable de cortar ni copiar el texto jurídico literal.
+
+## Decisión técnica adoptada
+
+La ingesta correcta debe ser híbrida:
+
+PDF  
+↓  
+extracción de texto literal  
+↓  
+eliminación del índice inicial del BOE  
+↓  
+parser determinista por estructura jurídica  
+↓  
+fragmentos literales  
+↓  
+embeddings  
+↓  
+Supabase  
+
+OpenAI queda reservado para fases posteriores como apoyo de metadata, validación o clasificación, pero no para copiar el texto completo ni decidir los cortes principales.
+
+## Script local de prueba
+
+Se creó un script local admin:
+
+`tools/upload-norma-ia-local.mjs`
+
+Objetivo:
+
+probar la ingesta híbrida fuera del timeout de Vercel.
+
+Características:
+
+- lee `.env.local`
+- usa `SUPABASE_URL`
+- usa `SUPABASE_SERVICE_ROLE_KEY`
+- usa `OPENAI_API_KEY`
+- procesa PDF local
+- extrae texto con `pdf-parse`
+- elimina índice inicial cortando desde `DISPONGO:`
+- divide con parser determinista
+- genera embeddings
+- inserta en Supabase
+- marca la norma como `lista`
+- permite modo `DRY_RUN`
+
+## Resultado validado
+
+La norma RD-486-1997 se subió correctamente con el script local.
+
+Resultado:
+
+✔ norma creada con `id = 26`  
+✔ `codigo = RD-486-1997`  
+✔ `estado_ingesta = lista`  
+✔ `error_ingesta = NULL`  
+✔ 26 fragmentos insertados en `normas_partes`  
+✔ 26 embeddings generados  
+✔ PDF real procesado sin timeout  
+
+Fragmentación detectada:
+
+- 26 fragmentos totales
+- 12 artículos
+- 7 anexos
+- disposiciones adicionales / derogatorias / finales
+- capítulos detectados
+
+La ingesta ya no depende de que OpenAI copie texto ni de frases inicio/fin.
+
+## Observaciones sobre la calidad de corte
+
+El parser determinista ya produce cortes útiles y literales.
+
+Ejemplos validados:
+
+- Artículo 1 completo
+- Artículo 2 completo
+- Artículo 3 completo
+- Disposición adicional única completa
+- Anexo I completo
+- Anexo II completo
+- Anexo III completo
+- Anexo IV completo
+- Anexo V completo
+- Anexo VI completo
+
+Detalle menor detectado:
+
+- aparece un fragmento `ANEXO` introductorio con la observación preliminar.
+- no bloquea la ingesta.
+- puede mejorarse más adelante clasificándolo como `Preámbulo de anexos` u `Observación preliminar`.
+
+## Conclusión técnica
+
+La estrategia correcta para producción es:
+
+parser jurídico determinista primero + IA como apoyo.
+
+No se debe volver al enfoque de pedir a OpenAI que devuelva todo el texto literal de la norma.
+
+---
+
+# 38. ESTADO ACTUAL DE SUBIDA DE NORMAS IA
+
+Estado: EN TRANSICIÓN
+
+Ya existen dos vías:
+
+## Vía web antigua
+
+`/subir-norma`  
+`/api/upload-norma`
+
+Estado:
+
+✔ sigue siendo la vía estable existente  
+✔ no se ha eliminado  
+✔ no debe romperse  
+
+## Vía IA nueva
+
+`/api/upload-norma-ia`
+
+Estado:
+
+✔ creada  
+✔ protegida por admin  
+✔ validada con TXT pequeño  
+✔ registra costes e informes  
+❌ todavía no apta para PDFs reales grandes en una sola request por timeout de Vercel  
+
+## Vía local híbrida
+
+`tools/upload-norma-ia-local.mjs`
+
+Estado:
+
+✔ validada con PDF real BOE  
+✔ RD-486-1997 subido correctamente  
+✔ sirve como referencia técnica para la siguiente implementación real  
+
+---
+
+# 39. PRÓXIMA FASE — CONVERTIR INGESTA HÍBRIDA EN SISTEMA REAL
+
+Estado: SIGUIENTE BLOQUE DE TRABAJO
+
+Objetivo:
+
+pasar lo validado en `tools/upload-norma-ia-local.mjs` al sistema real de subida.
+
+Orden recomendado:
+
+1. limpiar y conservar el script local como referencia
+2. extraer el parser híbrido a una función reutilizable
+3. reutilizarlo desde la subida IA
+4. evitar que Vercel procese PDFs grandes en una sola request
+5. implementar proceso por fases o jobs
+6. crear pantalla admin para subida IA
+7. mostrar estado, fragmentos, coste e informe final
+
+## Decisión importante
+
+No intentar resolver PDFs reales aumentando prompts ni haciendo que OpenAI copie la norma.
+
+La solución debe ser:
+
+- corte determinista
+- texto literal del PDF extraído
+- IA opcional solo para metadata/revisión
+- embeddings sobre fragmentos ya estables
+- proceso por fases si se ejecuta en Vercel
+
+---
+
+# 40. REGLAS NUEVAS TRAS VALIDACIÓN DE INGESTA
+
+A partir de ahora:
+
+1. No usar OpenAI para copiar texto jurídico completo.
+2. No usar `frase_inicio/frase_fin` como base principal de fragmentación.
+3. No procesar PDFs reales completos en una sola request de Vercel.
+4. Para normas BOE, eliminar índice inicial antes de fragmentar.
+5. El corte principal debe ser determinista por estructura jurídica.
+6. La IA puede ayudar a clasificar, validar, resumir o enriquecer metadata.
+7. El texto guardado en `normas_partes.texto` debe venir del texto extraído, no del texto reescrito por IA.
+8. Antes de pasar a producción, probar cada nueva lógica con script local y `DRY_RUN`.
+
+---
+
+# 41. NORMA NUEVA CARGADA
+
+Nueva norma cargada correctamente:
+
+- RD-486-1997
+- Real Decreto 486/1997, disposiciones mínimas de seguridad y salud en los lugares de trabajo
+- `normas.id = 26`
+- `estado_ingesta = lista`
+- `normas_partes = 26`
+
+Estado:
+
+✔ cargada  
+✔ fragmentada  
+✔ embebida  
+✔ disponible para pruebas de búsqueda  
+
+Pendiente:
+
+- probar consultas reales contra RD-486-1997
+- validar recuperación por artículo exacto
+- validar consultas funcionales:
+  - temperatura en locales de trabajo
+  - iluminación mínima
+  - servicios higiénicos
+  - material de primeros auxilios
+  - condiciones de lugares de trabajo
+  - anchura de vías/salidas si aplica
+
+---
 
 # FIN DE FOTO FIJA
