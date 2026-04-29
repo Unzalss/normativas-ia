@@ -5,6 +5,8 @@ export interface AIStructuredPart {
   numero: string | null;
   titulo: string | null;
   texto_literal: string;
+  frase_inicio: string;
+  frase_fin: string;
   orden: number;
   confidence: number;
   warnings: string[];
@@ -18,7 +20,7 @@ export interface AIStructureResult {
 }
 
 export function splitTextForAI(rawText: string): string[] {
-  const CHUNK_SIZE = 25000;
+  const CHUNK_SIZE = 8000;
   const OVERLAP = 500;
   const chunks: string[] = [];
   
@@ -51,6 +53,21 @@ export function splitTextForAI(rawText: string): string[] {
   return chunks;
 }
 
+export function reconstructLiteralText(rawText: string, fraseInicio: string, fraseFin: string, searchFromIndex: number): string {
+  if (!fraseInicio || !fraseFin) return "";
+  
+  let startIdx = rawText.indexOf(fraseInicio, searchFromIndex);
+  if (startIdx === -1) {
+    startIdx = rawText.indexOf(fraseInicio); // Fallback
+    if (startIdx === -1) return "";
+  }
+
+  const endIdx = rawText.indexOf(fraseFin, startIdx);
+  if (endIdx === -1) return "";
+
+  return rawText.substring(startIdx, endIdx + fraseFin.length);
+}
+
 export interface StructureNormaParams {
   rawText: string;
   codigo?: string;
@@ -79,6 +96,7 @@ export async function structureNormaWithOpenAI(params: StructureNormaParams): Pr
   };
 
   let globalOrder = 0;
+  let globalSearchIndex = 0;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunkText = chunks[i];
@@ -88,11 +106,12 @@ Eres un experto analista jurídico especializado en estructurar textos legales y
 Tu única tarea es extraer la estructura de este documento legal en formato JSON estricto.
 
 Reglas INQUEBRANTABLES:
-1. NO inventes texto. NO resumas. NO reescribas. Debes preservar la LITERALIDAD EXACTA del fragmento.
+1. NO inventes texto. NO resumas. NO reescribas. Debes extraer frases EXACTAS del fragmento.
 2. Extrae las piezas en el orden secuencial en el que aparecen.
 3. Tipos válidos (usar exclusivamente): articulo, anexo, disposicion, capitulo, seccion, tabla, preambulo, otro.
-4. "texto_literal" debe contener la copia exacta y completa del texto perteneciente a esa pieza.
-5. NO omitas contenido. Cada palabra del documento debe estar cubierta por alguna pieza extraída.
+4. ESTÁ TOTALMENTE PROHIBIDO copiar el texto completo para no exceder el límite de tokens. Solo debes extraer una frase de inicio ("frase_inicio") y una frase final ("frase_fin") que delimiten el contenido de esa pieza de forma unívoca.
+5. "frase_inicio" y "frase_fin" deben ser copias EXACTAS y LITERALES del texto original, sin añadir puntos suspensivos ("..."), de entre 5 y 15 palabras cada una.
+6. NO omitas contenido. Toda la estructura relevante del documento debe estar cubierta.
 
 Metadatos de la norma de contexto:
 Código: ${params.codigo || 'Desconocido'}
@@ -105,7 +124,8 @@ Formato de salida JSON ESPERADO OBLIGATORIO:
       "tipo": "articulo",
       "numero": "3",
       "titulo": "Disposiciones generales",
-      "texto_literal": "Artículo 3. Disposiciones generales... [texto copiado íntegro]",
+      "frase_inicio": "Artículo 3. Disposiciones generales. El objeto",
+      "frase_fin": "normativas europeas aplicables en esta materia.",
       "confidence": 0.99,
       "warnings": []
     }
@@ -139,14 +159,31 @@ Formato de salida JSON ESPERADO OBLIGATORIO:
       const parsed = JSON.parse(messageContent);
       if (parsed.partes && Array.isArray(parsed.partes)) {
         for (const p of parsed.partes) {
+          const frase_inicio = String(p.frase_inicio || "").trim();
+          const frase_fin = String(p.frase_fin || "").trim();
+          
+          const texto_literal = reconstructLiteralText(params.rawText, frase_inicio, frase_fin, globalSearchIndex);
+          const warnings = Array.isArray(p.warnings) ? p.warnings : [];
+          
+          if (!texto_literal) {
+            warnings.push("No se pudo reconstruir texto_literal a partir de frase_inicio y frase_fin.");
+          } else {
+            const foundIdx = params.rawText.indexOf(texto_literal, globalSearchIndex);
+            if (foundIdx !== -1) {
+              globalSearchIndex = foundIdx + texto_literal.length;
+            }
+          }
+
           result.parts.push({
             tipo: String(p.tipo || "otro"),
             numero: p.numero ? String(p.numero) : null,
             titulo: p.titulo ? String(p.titulo) : null,
-            texto_literal: String(p.texto_literal || ""),
+            texto_literal,
+            frase_inicio,
+            frase_fin,
             orden: ++globalOrder,
             confidence: Number(p.confidence) || 1,
-            warnings: Array.isArray(p.warnings) ? p.warnings : []
+            warnings
           });
         }
       } else {

@@ -79,6 +79,16 @@ export function validateAIStructure(result: AIStructureResult, rawText: string):
       }
     }
 
+    if (!part.frase_inicio || part.frase_inicio.trim() === "" || !part.frase_fin || part.frase_fin.trim() === "") {
+      validation.issues.push({
+        severity: "warning",
+        kind: "missing_phrases",
+        section_ref: sectionRef,
+        message: "Falta frase_inicio o frase_fin."
+      });
+      isDudoso = true;
+    }
+
     if (!validTypes.includes(part.tipo)) {
       validation.issues.push({
         severity: "error",
