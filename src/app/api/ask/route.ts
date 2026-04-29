@@ -100,15 +100,15 @@ export async function POST(req: Request) {
         let detectedNormaId = null;
 
         if (!parsedNormaId) {
-            const match = question.match(/\b(RD|RDL|Ley)\s*(\d{1,4}\/\d{4})\b/i);
+            const match = question.match(/\b(RD|RDL|Ley)[\s-]*(\d{1,4})[\/\-](\d{4})\b/i);
 
             if (match) {
-                const detectedCodigo = `${match[1].toUpperCase()} ${match[2]}`;
+                const flexibleCodePattern = `%${match[1].toUpperCase()}%${match[2]}%${match[3]}%`;
 
                 let normQuery = supabase
                     .from("normas")
                     .select("id, codigo, owner_user_id")
-                    .ilike("codigo", detectedCodigo)
+                    .ilike("codigo", flexibleCodePattern)
                     .limit(1);
 
                 if (userId) {
