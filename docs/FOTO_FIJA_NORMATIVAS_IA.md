@@ -1615,4 +1615,140 @@ Pendiente:
 
 ---
 
+---
+
+# 42. BLOQUE CERRADO — VALIDACIÓN FUNCIONAL DE RD-486-1997 EN BUSCADOR
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Tras la ingesta híbrida local del RD-486-1997, se han realizado pruebas reales en la web de producción.
+
+Norma validada:
+
+- RD-486-1997
+- Real Decreto 486/1997, disposiciones mínimas de seguridad y salud en los lugares de trabajo
+- `normas.id = 26`
+- `estado_ingesta = lista`
+- `normas_partes = 26`
+
+## Problema detectado tras la ingesta
+
+Aunque la norma estaba correctamente subida, la consulta:
+
+“¿Qué dice el artículo 7 del RD-486-1997?”
+
+mezclaba inicialmente fuentes de otras normas como RSCIEI y RIPCI.
+
+Diagnóstico:
+
+- la ingesta estaba bien
+- el artículo 7 existía en `normas_partes`
+- el fallo estaba en `/api/ask`
+- la detección de códigos de norma solo aceptaba formatos tipo `RD 486/1997`
+- no detectaba correctamente códigos guardados como `RD-486-1997`
+
+## Corrección aplicada
+
+Archivo modificado:
+
+`src/app/api/ask/route.ts`
+
+Cambio aplicado:
+
+- la detección de código de norma ahora acepta formatos con:
+  - espacios
+  - guiones
+  - barras
+
+Ejemplos soportados:
+
+- `RD-486-1997`
+- `RD 486/1997`
+- `RD 486-1997`
+
+La búsqueda de norma se hace con patrón flexible:
+
+`%RD%486%1997%`
+
+Esto permite asociar correctamente la pregunta con `normas.id = 26`.
+
+## Pruebas superadas en producción
+
+### Consulta 1
+
+“¿Qué dice el artículo 7 del RD-486-1997?”
+
+Resultado:
+
+✔ detecta RD-486-1997  
+✔ recupera exclusivamente Artículo 7  
+✔ no mezcla RSCIEI/RIPCI  
+✔ muestra fuente exacta RD-486-1997 / Artículo 7  
+✔ similitud 100%  
+✔ respuesta correcta sobre condiciones ambientales  
+
+### Consulta 2
+
+“¿Qué temperatura deben tener los locales de trabajo cerrados según el RD-486-1997?”
+
+Resultado:
+
+✔ recupera RD-486-1997  
+✔ recupera ANEXO III  
+✔ responde correctamente:
+  - 17 a 27 ºC para trabajos sedentarios propios de oficinas o similares
+  - 14 a 25 ºC para trabajos ligeros
+✔ muestra fuente exacta ANEXO III  
+
+### Consulta 3
+
+“¿Qué material mínimo debe tener el botiquín según el RD-486-1997?”
+
+Resultado:
+
+✔ recupera RD-486-1997  
+✔ recupera ANEXO VI  
+✔ responde correctamente:
+  - desinfectantes y antisépticos autorizados
+  - gasas estériles
+  - algodón hidrófilo
+  - venda
+  - esparadrapo
+  - apósitos adhesivos
+  - tijeras
+  - pinzas
+  - guantes desechables
+✔ muestra fuente exacta ANEXO VI  
+
+## Estado final de la fase
+
+La fase queda cerrada.
+
+Validado:
+
+✔ ingesta real de PDF BOE  
+✔ fragmentación híbrida útil  
+✔ embeddings generados  
+✔ norma disponible para búsqueda  
+✔ recuperación por artículo exacto  
+✔ recuperación por consulta funcional  
+✔ fuentes correctas  
+✔ detección flexible de códigos RD  
+
+## Pendiente para mañana
+
+No tocar más hoy.
+
+Siguiente bloque recomendado:
+
+convertir la lógica validada en `tools/upload-norma-ia-local.mjs` en una solución estable:
+
+1. limpiar script local
+2. extraer parser híbrido reutilizable
+3. decidir si se integra en API por jobs/chunks
+4. crear subida admin estable sin timeout
+5. actualizar documentación técnica
+
+---
+
 # FIN DE FOTO FIJA
