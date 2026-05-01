@@ -437,9 +437,8 @@ async function main() {
     const { data: insertNorma, error: insertError } = await supabase.from("normas").insert({
       codigo: CODIGO,
       titulo: TITULO,
-      texto_completo: rawText,
       estado_ingesta: "procesando",
-      huella_documento: hashNorma,
+      document_hash: hashNorma,
     }).select("id").single();
     if (insertError) throw new Error("Fallo al crear norma: " + insertError.message);
     normaId = insertNorma.id;
