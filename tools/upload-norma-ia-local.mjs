@@ -15,9 +15,28 @@ import OpenAI from "openai";
 // ==========================================
 const DRY_RUN = false; // Si es true, NO inserta en base de datos ni genera embeddings
 
-const FILE_PATH = "C:\\Users\\unzal\\Downloads\\BOE-A-1997-8669-consolidado  JUJU.pdf";
-const CODIGO = "RD-486-1997";
-const TITULO = "Real Decreto 486/1997, disposiciones mínimas de seguridad y salud en los lugares de trabajo";
+const cliArgs = process.argv.slice(2);
+
+function getCliArg(name) {
+  const inlineArg = cliArgs.find(arg => arg.startsWith(`--${name}=`));
+  if (inlineArg) return inlineArg.slice(name.length + 3).trim();
+
+  const argIndex = cliArgs.indexOf(`--${name}`);
+  if (argIndex !== -1) return (cliArgs[argIndex + 1] || "").trim();
+
+  return null;
+}
+
+function requiredCliArg(name) {
+  const value = getCliArg(name);
+  if (!value) throw new Error(`Falta argumento obligatorio --${name}`);
+  return value;
+}
+
+const FILE_PATH = requiredCliArg("file");
+const CODIGO = requiredCliArg("codigo");
+const TITULO = requiredCliArg("titulo");
+const CONFIRM_UPLOAD = cliArgs.includes("--confirm-upload");
 const MODEL = "gpt-4o-mini";
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_BATCH_SIZE = 20;
@@ -26,7 +45,7 @@ let supabase;
 let openai;
 const requestId = crypto.randomUUID();
 
-if (!DRY_RUN) {
+function initUploadClients() {
   const requiredEnv = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "OPENAI_API_KEY"];
   for (const key of requiredEnv) {
     if (!process.env[key]) throw new Error(`Falta variable: ${key}`);
@@ -44,6 +63,29 @@ function normalizeText(text) {
     .replace(/\r\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function getCodigoSignals(codigo) {
+  const match = codigo.match(/(\d+)[/-](\d{4})/);
+  if (!match) throw new Error(`No se puede validar el c\u00F3digo esperado: ${codigo}`);
+
+  const [, number, year] = match;
+  return [`${number}/${year}`, `${number}-${year}`];
+}
+
+function validateExtractedTextMatchesCodigo(text, codigo) {
+  const normalizedText = text.toLowerCase();
+  const signals = getCodigoSignals(codigo).map(signal => signal.toLowerCase());
+  const foundSignal = signals.find(signal => normalizedText.includes(signal));
+
+  if (!foundSignal) {
+    throw new Error(
+      `El PDF no parece corresponder a ${codigo}. ` +
+      `No se encontr\u00F3 ninguna se\u00F1al esperada: ${signals.join(", ")}`
+    );
+  }
+
+  console.log(`[VALIDACION] C\u00F3digo esperado encontrado en PDF: ${foundSignal}`);
 }
 
 async function extractTextFromPdfBuffer(buffer) {
@@ -321,6 +363,7 @@ async function main() {
   const buffer = await fs.readFile(FILE_PATH);
   let rawText = await extractTextFromPdfBuffer(buffer);
   console.log(`[TEXT] PDF extraído original: ${rawText.length} caracteres`);
+  validateExtractedTextMatchesCodigo(rawText, CODIGO);
 
   const dispongoIndex = rawText.indexOf("DISPONGO:");
   if (dispongoIndex !== -1) {
@@ -368,11 +411,24 @@ async function main() {
     return;
   }
 
+  if (!CONFIRM_UPLOAD) {
+    throw new Error("Falta --confirm-upload. Abortando antes de tocar Supabase.");
+  }
+
+  initUploadClients();
+
   console.log(`\n[DB] Iniciando subida a Supabase...`);
   
   const hashNorma = crypto.createHash("sha256").update(rawText).digest("hex");
   let { data: existingNorma } = await supabase.from("normas").select("id").eq("codigo", CODIGO).single();
   let normaId;
+
+  console.log(`\n[CONFIRMACION] Subida local validada antes de borrar partes:`);
+  console.log(`  PDF usado: ${FILE_PATH}`);
+  console.log(`  CODIGO: ${CODIGO}`);
+  console.log(`  TITULO: ${TITULO}`);
+  console.log(`  norma_id existente: ${existingNorma?.id || "ninguna"}`);
+  console.log(`  fragmentos detectados: ${finalFragments.length}`);
   
   if (existingNorma) {
     normaId = existingNorma.id;
