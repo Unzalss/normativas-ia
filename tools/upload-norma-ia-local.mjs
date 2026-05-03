@@ -132,6 +132,26 @@ function extractMetadataFromTitle(title) {
   return res;
 }
 
+function getLineAtIndex(text, index) {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  const lineEnd = text.indexOf("\n", index);
+  return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+}
+
+function isInternalReferenceLine(line, heading) {
+  if (/^anexo\b/i.test(heading)) {
+    return !/^ANEXO\s+(?:[IVX]+|\u00DANICO)\.?$/i.test(line);
+  }
+
+  const rest = line.slice(heading.length).trim();
+  return /^(?:de|del|en|seg[u\u00FA]n|conforme|previsto)\b/i.test(rest)
+    || /^(?:\.\d+|\d+\.)/.test(rest);
+}
+
+function isRealAnexoHeading(line, heading) {
+  return /^anexo\b/i.test(heading) && /^ANEXO\s+(?:[IVX]+|\u00DANICO)\.?$/i.test(line);
+}
+
 function parseNormaDeterminista(text) {
   const fragments = [];
   // Aseguramos que el encabezado empiece a principio de línea o tras un salto de línea
@@ -139,10 +159,16 @@ function parseNormaDeterminista(text) {
 
   const matches = [];
   let match;
+  let insideAnexo = false;
   while ((match = splitterRegex.exec(text)) !== null) {
     const matchedStr = match[0];
     const trimmedStr = matchedStr.trim();
     const realIndex = match.index + matchedStr.indexOf(trimmedStr);
+    const headingLine = getLineAtIndex(text, realIndex);
+    if (isInternalReferenceLine(headingLine, trimmedStr)) continue;
+    const isAnexo = isRealAnexoHeading(headingLine, trimmedStr);
+    if (insideAnexo && !isAnexo) continue;
+    if (isAnexo) insideAnexo = true;
     matches.push({ title: trimmedStr, index: realIndex });
   }
 
@@ -167,6 +193,9 @@ function parseNormaDeterminista(text) {
     let blockText = text.substring(startIndex, endIndex).trim();
 
     if (blockText.length < 20) continue;
+    if (DRY_RUN && blockText.length > 20000) {
+      console.warn(`[DRY_RUN][WARN] Fragmento muy grande: ${currentTitle} (${blockText.length} caracteres).`);
+    }
 
     const ext = extractMetadataFromTitle(currentTitle);
     const esIndice = blockText.toLowerCase().includes('\u00EDndice') && blockText.length < 500;
@@ -183,7 +212,8 @@ function parseNormaDeterminista(text) {
   }
 
   const cleanedFragments = discardInitialIndexFragments(fragments);
-  return sortLegalFragments(cleanedFragments);
+  const sortedFragments = sortLegalFragments(cleanedFragments);
+  return splitLargeAnexoFragments(sortedFragments);
 }
 
 function fragmentKey(fragment) {
@@ -267,6 +297,106 @@ function sortLegalFragments(fragments) {
   }
 
   return sortedFragments;
+}
+
+function findInternalAnexoHeadings(text) {
+  const headingRegex = /(?:^|\n)\s*((?:Secci[o\u00F3]n\s+\d+\.?\s*\u00AA?\.?\s+[^\n]{3,120})|(?:Tabla\s+[IVX]+\.?))\s*(?=\n|$)/gi;
+  const headings = [];
+  let match;
+
+  while ((match = headingRegex.exec(text)) !== null) {
+    const title = match[1].trim().replace(/\.$/, '');
+    const index = match.index + match[0].indexOf(match[1]);
+    headings.push({ title, index });
+  }
+
+  return headings;
+}
+
+function findTechnicalAnexoHeadings(text) {
+  const headingRegex = /(?:^|\n)\s*(\d{1,2}\.\s+[A-Z\u00C1\u00C9\u00CD\u00D3\u00DA\u00D1][^\n]{5,140})\s*(?=\n|$)/g;
+  const headings = [];
+  let match;
+
+  while ((match = headingRegex.exec(text)) !== null) {
+    const title = match[1].trim().replace(/\.$/, '');
+    const titleText = title.replace(/^\d{1,2}\.\s+/, '');
+    if (/^(?:El|La|Los|Las|En|Para|Estos|Estas|Tanto|A falta|Cada|Cuando)\b/i.test(titleText)) continue;
+    const index = match.index + match[0].indexOf(match[1]);
+    headings.push({ title, index });
+  }
+
+  return headings;
+}
+
+function splitAnexoByTechnicalHeadings(fragment) {
+  if (fragment.tipo !== 'Anexo' || fragment.texto.length <= 20000) return [fragment];
+
+  const headings = findTechnicalAnexoHeadings(fragment.texto);
+  if (headings.length < 2) return [fragment];
+
+  const splitFragments = [];
+  const prefixText = fragment.texto.substring(0, headings[0].index).trim();
+  if (prefixText.length >= 20) {
+    splitFragments.push({ ...fragment, texto: prefixText });
+  }
+
+  for (let i = 0; i < headings.length; i++) {
+    const startIndex = headings[i].index;
+    const endIndex = i + 1 < headings.length ? headings[i + 1].index : fragment.texto.length;
+    const blockText = fragment.texto.substring(startIndex, endIndex).trim();
+    if (blockText.length < 20) continue;
+
+    splitFragments.push({
+      ...fragment,
+      seccion: `${fragment.seccion} - ${headings[i].title}`,
+      texto: blockText,
+      articulo: null,
+      article_number: null
+    });
+  }
+
+  return splitFragments;
+}
+
+function splitLargeAnexoFragments(fragments) {
+  const splitFragments = [];
+
+  for (const fragment of fragments) {
+    if (fragment.tipo !== 'Anexo' || fragment.texto.length <= 20000) {
+      splitFragments.push(fragment);
+      continue;
+    }
+
+    const headings = findInternalAnexoHeadings(fragment.texto);
+    if (headings.length < 2) {
+      splitFragments.push(...splitAnexoByTechnicalHeadings(fragment));
+      continue;
+    }
+
+    const prefixText = fragment.texto.substring(0, headings[0].index).trim();
+    if (prefixText.length >= 20) {
+      splitFragments.push({ ...fragment, texto: prefixText });
+    }
+
+    for (let i = 0; i < headings.length; i++) {
+      const startIndex = headings[i].index;
+      const endIndex = i + 1 < headings.length ? headings[i + 1].index : fragment.texto.length;
+      const blockText = fragment.texto.substring(startIndex, endIndex).trim();
+      if (blockText.length < 20) continue;
+
+      const anexoFragment = {
+        ...fragment,
+        seccion: `${fragment.seccion} - ${headings[i].title}`,
+        texto: blockText,
+        articulo: null,
+        article_number: null
+      };
+      splitFragments.push(...splitAnexoByTechnicalHeadings(anexoFragment));
+    }
+  }
+
+  return splitFragments;
 }
 
 function extractJsonObject(text) {
