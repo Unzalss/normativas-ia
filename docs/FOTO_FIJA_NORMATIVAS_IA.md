@@ -1751,4 +1751,196 @@ convertir la lógica validada en `tools/upload-norma-ia-local.mjs` en una soluci
 
 ---
 
+
+# 43. BLOQUE COMPLETADO — SEGUNDA INGESTA REAL VALIDADA: RD-505-2007
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Se ha validado una segunda norma real mediante el script local híbrido:
+
+- RD-505-2007
+- Real Decreto 505/2007, condiciones básicas de accesibilidad y no discriminación
+- `normas.id = 27`
+- 29 fragmentos insertados
+- 19 artículos detectados
+- 1 anexo detectado
+- 29 embeddings generados
+
+Prueba en producción superada:
+
+“¿Qué dice el artículo 1 del RD-505-2007?”
+
+Resultado:
+
+✔ detecta RD-505-2007  
+✔ recupera Artículo 1  
+✔ fuente correcta  
+✔ similitud 100%  
+✔ no mezcla otras normas  
+
+---
+
+# 44. MEJORAS DEL SCRIPT LOCAL DE INGESTA
+
+Archivo:
+
+`tools/upload-norma-ia-local.mjs`
+
+Mejoras implementadas:
+
+✔ corrección de problemas de acentos/codificación  
+✔ eliminación de índice inicial BOE  
+✔ detección de entradas de índice con puntos y número de página  
+✔ conservación del texto literal extraído del PDF  
+✔ reordenación jurídica de fragmentos  
+✔ contador correcto de artículos  
+✔ argumentos obligatorios por terminal:
+- `--file`
+- `--codigo`
+- `--titulo`
+
+✔ validación de que el PDF contiene señales del código esperado  
+✔ bloqueo de escritura si falta:
+- `--confirm-upload`
+
+Esto evita volver a pisar una norma por error.
+
+Comandos/commits relevantes:
+
+- `3a5220e` — Improve local legal ingestion parser
+- `65e5622` — Add safe arguments to local legal ingestion
+- `4788cae` — Fix local ingestion norma insert columns
+
+---
+
+# 45. INCIDENCIA CONTROLADA — RD-486-1997 PISADO
+
+Durante la prueba inicial, el script todavía tenía constantes fijas:
+
+- `CODIGO = RD-486-1997`
+- `TITULO = RD-486-1997`
+
+Se ejecutó con el PDF de RD-505-2007, por lo que se insertó contenido de RD-505 dentro de `normas.id = 26`.
+
+Estado:
+
+- `normas.id = 26` debe considerarse contaminado
+- corresponde nominalmente a RD-486-1997
+- pero sus fragmentos fueron sustituidos por contenido de RD-505 durante la prueba
+
+Pendiente:
+
+- reingestar RD-486-1997 correctamente cuando se descargue de nuevo su PDF
+- no confiar en RD-486-1997 hasta reingestarlo
+
+---
+
+# 46. ESTADO ACTUAL DE INGESTA
+
+El método local híbrido queda validado con dos normas reales:
+
+1. RD-486-1997  
+   - validado inicialmente
+   - actualmente pendiente de reingesta por incidencia posterior
+
+2. RD-505-2007  
+   - subido correctamente como norma nueva
+   - validado en producción
+
+Conclusión:
+
+La estrategia de ingesta correcta queda confirmada:
+
+PDF BOE  
+↓  
+texto literal  
+↓  
+eliminación de índice  
+↓  
+parser determinista  
+↓  
+fragmentos jurídicos  
+↓  
+embeddings  
+↓  
+Supabase  
+↓  
+validación en buscador
+
+La IA no debe copiar ni cortar el texto jurídico.
+La IA podrá usarse después para metadata, revisión e informe.
+
+---
+
+# 47. ESTADO ACTUAL - INGESTA RIPCI Y PRUEBAS
+
+Fecha: 2026-05-03
+
+1. Se ha seguido trabajando con el camino actual de ingesta local desde PDF mediante `tools/upload-norma-ia-local.mjs`.
+
+2. `RIPCI_RD_513_2017.pdf` se ha reingestado correctamente con:
+
+- codigo: `RD-513-2017`
+- titulo: `Real Decreto 513/2017, Reglamento de instalaciones de protección contra incendios`
+- normaId: `28`
+- 77 fragmentos insertados
+- 77 embeddings generados
+- fragmento máximo final: 10935 caracteres
+- subida finalizada correctamente con `--confirm-upload`
+
+3. Mejoras realizadas en el parser local:
+
+- validación más estricta de encabezados para evitar que referencias internas tipo `anexo I, sección...` o `artículo X de...` se traten como fragmentos reales.
+- al entrar en un ANEXO real, se ignoran cortes internos globales por Sección/Capítulo/Artículo.
+- división posterior de anexos grandes por secciones internas reales y apartados técnicos.
+- división final de fragmentos sobredimensionados para evitar superar límites de embeddings.
+- validación previa de tamaño máximo antes de pedir embeddings.
+
+4. Resultado funcional:
+
+- Las consultas por artículo exacto funcionan muy bien. Ejemplo validado: `¿Qué dice el artículo 22 del RD-513-2017 sobre inspecciones periódicas?` recupera Artículo 22 con alta confianza / 100%.
+- Las consultas temáticas sobre anexos han mejorado, pero todavía no están cerradas.
+- Ejemplos probados:
+  - `¿Qué exige el RIPCI sobre extintores de incendio?`
+  - `¿Qué dice el RIPCI sobre mantenimiento de sistemas de detección y alarma?`
+- Las respuestas generadas son razonables, pero las fuentes/citas todavía pueden mezclar fragmentos no óptimos o mostrar etiquetas tipo `ANEXO I - Ap. X` en vez de la sección completa correcta.
+
+5. Mejoras realizadas en `/api/ask`:
+
+- detección de consultas técnicas de anexos.
+- aumento de `k` en consultas técnicas.
+- reranking específico para RIPCI/anexos técnicos.
+- intentos de priorizar ANEXO I para extintores/BIE y ANEXO II para mantenimiento/detección/alarma.
+- `source_label` para mejorar etiquetas de fuentes.
+- prompt reforzado para evitar inventar `Ap.`.
+- cambios en UI para mostrar `Fuentes citadas` en vez de solo `Artículos citados`.
+
+6. Diagnóstico actual:
+
+- El problema principal ya no parece ser solo la ingesta.
+- La vía directa por `article_number` está estable.
+- El problema pendiente está en la recuperación/reranking/citado de consultas temáticas de anexos.
+- El sistema aún necesita una capa más robusta de búsqueda literal + semántica + selección/validación de fuentes.
+
+7. Decisión pendiente para próxima sesión:
+
+- Analizar si conviene seguir con el camino actual PDF/parser o pasar a un camino más estructurado:
+  a) BOE API/XML,
+  b) Legalize ES,
+  c) sistema donde solo el administrador sube normas curadas.
+- El usuario se inclina cada vez más por que solo el administrador cargue normas, como hacen plataformas jurídicas, para reducir errores y tener una base documental controlada.
+- PDF/parser local puede quedar como respaldo o herramienta auxiliar, no necesariamente como camino principal.
+
+8. Siguiente recomendación:
+
+- No seguir parcheando sin analizar.
+- En la próxima ventana, decidir arquitectura de ingesta definitiva:
+  - administrador curador,
+  - fuente estructurada,
+  - búsqueda literal fuerte,
+  - búsqueda semántica,
+  - IA final,
+  - posible IA revisora barata para validar fuentes/respuesta.
+
 # FIN DE FOTO FIJA
+
