@@ -296,7 +296,14 @@ export async function POST(req: Request) {
         console.log(`[ASK] detectedNormaCodigo=${detectedNormaCodigo ?? "null"} | detectedMateria=${detectedMateria ?? "null"}`);
         console.log(`[HYBRID SEARCH] Filtro norma: ${parsedNormaId ?? "TODAS"} | Pregunta: ${question.substring(0, 60)}...`);
 
-        const safeK = Number.isInteger(Number(k)) && Number(k) > 0 ? Number(k) : K_GLOBAL;
+        const qNormalized = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const anexoTopicTerms = [
+            "mantenimiento", "revision", "revisiones", "trimestral", "anual", "cinco anos",
+            "deteccion", "alarma", "extintores", "extintor", "bie", "bocas de incendio"
+        ];
+        const isTechnicalAnexoQuery = anexoTopicTerms.some(term => qNormalized.includes(term));
+        const safeKBase = Number.isInteger(Number(k)) && Number(k) > 0 ? Number(k) : K_GLOBAL;
+        const safeK = isTechnicalAnexoQuery ? Math.max(safeKBase, 20) : safeKBase;
 
         // Limpieza absoluta para Postgres: sólo null o integer, nunca string vacío
         const validNormaId = typeof parsedNormaId === "number" && Number.isInteger(parsedNormaId) ? parsedNormaId : null;
@@ -570,6 +577,24 @@ export async function POST(req: Request) {
         console.log("validData_first_3:", validData?.slice(0,3));
         console.log(`[ASK] Fragmentos válidos tras filtro: ${validData.length}`);
 
+        if (isTechnicalAnexoQuery && !articuloMencionado) {
+            const scoreAnexoKeyword = (item: any) => {
+                const seccion = String(item.seccion || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                const texto = String(item.texto || item.content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                let boost = 0;
+
+                if (String(item.tipo || "").toLowerCase().includes("anexo")) boost += 0.25;
+                for (const term of anexoTopicTerms) {
+                    if (qNormalized.includes(term) && seccion.includes(term)) boost += 0.20;
+                    if (qNormalized.includes(term) && texto.includes(term)) boost += 0.08;
+                }
+
+                return getScore(item) + boost;
+            };
+
+            validData.sort((a: any, b: any) => scoreAnexoKeyword(b) - scoreAnexoKeyword(a));
+        }
+
         let bestScore = 0;
         let strongCount = 0;
         let mediumCount = 0;
@@ -749,7 +774,7 @@ Fundamento normativo:
 <Explicación jurídica basada estrictamente en los fragmentos proporcionados. No simplifiques. Si hay varias condiciones o requisitos, menciónalos todos.>
 
 Cita:
-<Indica el artículo o apartado correspondiente con el formato [Artículo X] o [Anexo X - Ap. Y].>
+<Indica la fuente exacta. Para artículos usa [Artículo X]. Para anexos usa la sección completa proporcionada, por ejemplo [ANEXO I - Sección 1.ª ... - 5. Sistemas de bocas de incendio equipadas]. No inventes "Ap." si no aparece en la fuente.>
 
 Reglas adicionales:
 - Responde ÚNICAMENTE con información contenida en los fragmentos. No uses conocimiento externo ni inventes datos.
