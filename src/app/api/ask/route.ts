@@ -220,6 +220,10 @@ export async function POST(req: Request) {
                     codigo: "RSCIEI",
                 },
                 {
+                    keywords: ["ripci", "instalaciones de proteccion contra incendios", "proteccion contra incendios"],
+                    codigo: "RD-513-2017",
+                },
+                {
                     keywords: ["resbaladicidad", "resbalamiento", "resbalen", "resbal"],
                     codigo: "CTE-DB-SUA",
                 },
@@ -315,6 +319,10 @@ export async function POST(req: Request) {
             "deteccion", "alarma", "extintores", "extintor", "bie", "bocas de incendio"
         ];
         const isTechnicalAnexoQuery = anexoTopicTerms.some(term => qNormalized.includes(term));
+        const isExtintorQuery = qNormalized.includes("extintor");
+        const isDetectionMaintenanceQuery =
+            (qNormalized.includes("mantenimiento") || qNormalized.includes("revision") || qNormalized.includes("revisiones")) &&
+            (qNormalized.includes("deteccion") || qNormalized.includes("alarma"));
         const safeKBase = Number.isInteger(Number(k)) && Number(k) > 0 ? Number(k) : K_GLOBAL;
         const safeK = isTechnicalAnexoQuery ? Math.max(safeKBase, 20) : safeKBase;
 
@@ -603,18 +611,19 @@ export async function POST(req: Request) {
                 if (tipo.includes("anexo")) boost += 0.25;
                 if (tipo.includes("art")) boost -= 0.35;
                 if (/^anexo(?:\s+[ivx]+)?$/i.test(String(item.seccion || "").trim())) boost -= 0.45;
+                if (/\bap\.\s*\d+/i.test(String(item.seccion || ""))) boost -= 0.60;
                 if (String(item.texto || item.content || "").length < 500) boost -= 0.30;
+                if ((isExtintorQuery || isDetectionMaintenanceQuery) && (seccion.includes("anexo iii") || seccion.includes("anexo iv"))) boost -= 0.90;
 
-                if (qNormalized.includes("extintor") && seccion.includes("extintores de incendio")) boost += 1.40;
+                if (isExtintorQuery && seccion.includes("anexo i") && seccion.includes("extintores de incendio")) boost += 2.50;
+                if (isExtintorQuery && texto.includes("extintores de incendio")) boost += 0.55;
                 if ((qNormalized.includes("bie") || qNormalized.includes("bocas de incendio")) && seccion.includes("bocas de incendio equipadas")) boost += 1.40;
 
-                const isDetectionMaintenanceQuery =
-                    (qNormalized.includes("mantenimiento") || qNormalized.includes("revision") || qNormalized.includes("revisiones")) &&
-                    (qNormalized.includes("deteccion") || qNormalized.includes("alarma"));
-                if (isDetectionMaintenanceQuery && seccion.includes("anexo ii")) boost += 1.20;
+                if (isDetectionMaintenanceQuery && seccion.includes("anexo ii")) boost += 2.20;
                 if (isDetectionMaintenanceQuery && (seccion.includes("deteccion") || texto.includes("deteccion"))) boost += 0.45;
                 if (isDetectionMaintenanceQuery && (seccion.includes("alarma") || texto.includes("alarma"))) boost += 0.45;
                 if (isDetectionMaintenanceQuery && (seccion.includes("mantenimiento") || texto.includes("mantenimiento"))) boost += 0.35;
+                if (isDetectionMaintenanceQuery && (texto.includes("trimestral") || texto.includes("anual") || texto.includes("cinco anos"))) boost += 0.35;
 
                 for (const term of anexoTopicTerms) {
                     if (qNormalized.includes(term) && seccion.includes(term)) boost += 0.20;
@@ -626,6 +635,12 @@ export async function POST(req: Request) {
 
             validData.sort((a: any, b: any) => scoreAnexoKeyword(b) - scoreAnexoKeyword(a));
         }
+
+        console.log("[ASK][VALIDDATA] top fragments:");
+        validData.slice(0, 10).forEach((item: any, i: number) => {
+            const snippet = String(item.texto || item.content || "").substring(0, 180).replace(/\n/g, " ");
+            console.log(`[ASK][VALIDDATA][${i + 1}] id=${item.id ?? "N/A"} | tipo=${item.tipo || "N/A"} | seccion="${item.seccion || ""}" | source_label="${item.source_label || ""}" | score=${getScore(item).toFixed(3)} | texto="${snippet}"`);
+        });
 
         let bestScore = 0;
         let strongCount = 0;
@@ -783,8 +798,8 @@ export async function POST(req: Request) {
                 console.log("[ASK][CONTEXT] Fragmentos/grupos enviados al modelo:");
                 contextGroups.slice(0, 10).forEach(([label, frags], i) => {
                     const first = frags[0] || {};
-                    const snippet = String(first.texto || first.content || "").substring(0, 120).replace(/\n/g, " ");
-                    console.log(`[ASK][CONTEXT][${i + 1}] tipo=${first.tipo || "N/A"} | seccion="${label}" | score=${getScore(first).toFixed(3)} | texto="${snippet}"`);
+                    const snippet = String(first.texto || first.content || "").substring(0, 180).replace(/\n/g, " ");
+                    console.log(`[ASK][CONTEXT][${i + 1}] id=${first.id ?? "N/A"} | tipo=${first.tipo || "N/A"} | seccion="${first.seccion || label}" | source_label="${first.source_label || label}" | score=${getScore(first).toFixed(3)} | texto="${snippet}"`);
                 });
 
                 const reconstructedArticles = contextGroups
@@ -813,7 +828,7 @@ Fundamento normativo:
 <Explicación jurídica basada estrictamente en los fragmentos proporcionados. No simplifiques. Si hay varias condiciones o requisitos, menciónalos todos.>
 
 Cita:
-<Indica la fuente exacta. Para artículos usa [Artículo X]. Para anexos usa la sección completa proporcionada, por ejemplo [ANEXO I - Sección 1.ª ... - 5. Sistemas de bocas de incendio equipadas]. No inventes "Ap." si no aparece en la fuente.>
+<Indica la fuente exacta usando literalmente la etiqueta que aparece antes de los dos puntos en el CONTEXTO. Para artículos usa [Artículo X]. Para anexos usa la sección completa recibida, por ejemplo [ANEXO I - Sección 1.ª ... - 5. Sistemas de bocas de incendio equipadas]. Prohibido inventar "Ap." si no aparece exactamente en esa etiqueta.>
 
 Reglas adicionales:
 - Responde ÚNICAMENTE con información contenida en los fragmentos. No uses conocimiento externo ni inventes datos.
