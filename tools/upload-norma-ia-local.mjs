@@ -213,7 +213,8 @@ function parseNormaDeterminista(text) {
 
   const cleanedFragments = discardInitialIndexFragments(fragments);
   const sortedFragments = sortLegalFragments(cleanedFragments);
-  return splitLargeAnexoFragments(sortedFragments);
+  const splitAnexoFragments = splitLargeAnexoFragments(sortedFragments);
+  return splitOversizedFragments(splitAnexoFragments);
 }
 
 function fragmentKey(fragment) {
@@ -399,6 +400,60 @@ function splitLargeAnexoFragments(fragments) {
   return splitFragments;
 }
 
+function findSafeSplitIndex(text, startIndex, maxLength) {
+  const hardLimit = Math.min(startIndex + maxLength, text.length);
+  const minSplitIndex = startIndex + Math.floor(maxLength * 0.6);
+  const searchText = text.slice(startIndex, hardLimit);
+  const splitPatterns = [/\n\n/g, /\n/g, /\.\s/g];
+
+  for (const pattern of splitPatterns) {
+    let bestIndex = -1;
+    let match;
+    while ((match = pattern.exec(searchText)) !== null) {
+      const candidate = startIndex + match.index + match[0].length;
+      if (candidate >= minSplitIndex) bestIndex = candidate;
+    }
+    if (bestIndex !== -1) return bestIndex;
+  }
+
+  return hardLimit;
+}
+
+function splitOversizedFragment(fragment, maxLength = 12000, targetLength = 10000) {
+  if (!fragment.texto || fragment.texto.length <= maxLength) return [fragment];
+
+  const parts = [];
+  let startIndex = 0;
+
+  while (startIndex < fragment.texto.length) {
+    const endIndex = findSafeSplitIndex(fragment.texto, startIndex, targetLength);
+    const partText = fragment.texto.slice(startIndex, endIndex).trim();
+    if (partText.length > 0) {
+      parts.push({
+        ...fragment,
+        seccion: `${fragment.seccion} - Parte ${parts.length + 1}`,
+        texto: partText
+      });
+    }
+    startIndex = endIndex;
+  }
+
+  return parts;
+}
+
+function splitOversizedFragments(fragments) {
+  return fragments.flatMap(fragment => splitOversizedFragment(fragment));
+}
+
+function validateFinalFragmentSizes(fragments) {
+  const maxLength = fragments.reduce((max, fragment) => Math.max(max, fragment.texto?.length || 0), 0);
+  console.log(`[VALIDACION] Fragmento m\u00E1ximo final: ${maxLength} caracteres`);
+
+  if (maxLength > 12000) {
+    throw new Error(`Fragmento demasiado grande tras división final: ${maxLength} caracteres.`);
+  }
+}
+
 function extractJsonObject(text) {
   const first = text.indexOf("{");
   const last = text.lastIndexOf("}");
@@ -559,6 +614,7 @@ async function main() {
   console.log(`  TITULO: ${TITULO}`);
   console.log(`  norma_id existente: ${existingNorma?.id || "ninguna"}`);
   console.log(`  fragmentos detectados: ${finalFragments.length}`);
+  validateFinalFragmentSizes(finalFragments);
   
   if (existingNorma) {
     normaId = existingNorma.id;
