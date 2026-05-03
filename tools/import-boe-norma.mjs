@@ -27,6 +27,15 @@ function hasFlag(name) {
   return process.argv.slice(2).includes(`--${name}`);
 }
 
+function parseKeywordsArg(value) {
+  if (!value) return null;
+  const keywords = String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return keywords.length > 0 ? keywords : null;
+}
+
 function requireArgs() {
   const boeId = getArg("boe-id");
   const dryRun = hasFlag("dry-run");
@@ -848,8 +857,119 @@ function printDuplicateSummary(duplicateGroups) {
   });
 }
 
+function yearFromPreviewMetadata(metadata) {
+  const match = String(metadata?.fecha || metadata?.fecha_publicacion || "").match(/^(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
+function buildNormaPayload({ preview, codigo, documentHash }) {
+  const metadata = preview.metadata;
+  const tituloArg = (getArg("titulo") || "").trim();
+  const jurisdiccion = (getArg("jurisdiccion") || "ES").trim();
+  const materia = (getArg("materia") || "").trim();
+  const submateria = (getArg("submateria") || "").trim();
+  const keywords = parseKeywordsArg(getArg("keywords"));
+
+  return {
+    codigo,
+    titulo: tituloArg || metadata.titulo,
+    rango: metadata.rango,
+    fecha_publicacion: metadata.fecha,
+    estado: "vigente",
+    estado_ingesta: "procesando",
+    document_hash: documentHash,
+    url_fuente: metadata.source_url,
+    nombre_archivo: `boe-preview-${metadata.boeId}.json`,
+    mime_type: "application/xml",
+    fecha_ingesta: new Date().toISOString(),
+    owner_user_id: null,
+    jurisdiccion,
+    materia: materia || null,
+    submateria: submateria || null,
+    keywords,
+  };
+}
+
+function buildNormasPartesPayloads({ preview, normaPayload }) {
+  const metadata = preview.metadata;
+  const year = yearFromPreviewMetadata(metadata);
+  const normType = metadata.rango || "Norma Jurídica";
+
+  return preview.fragments.map((fragment, index) => ({
+    tipo: fragment.tipo || null,
+    seccion: fragment.seccion,
+    numero: fragment.numero ?? null,
+    texto: fragment.texto,
+    orden: Number.isInteger(fragment.orden) ? fragment.orden : index + 1,
+    huella: crypto.createHash("sha256").update(fragment.texto).digest("hex"),
+    articulo: fragment.articulo ?? null,
+    rango: metadata.rango || null,
+    es_indice: false,
+    jurisdiction: normaPayload.jurisdiccion || null,
+    norm_type: normType,
+    year,
+    article_number: fragment.article_number ?? null,
+    apartado: fragment.apartado ?? null,
+    embedding: "[PENDING_EMBEDDING]",
+  }));
+}
+
+function countPreparedFragments(partesPayloads) {
+  return {
+    total: partesPayloads.length,
+    articulos: partesPayloads.filter((item) => String(item.tipo || "").toLowerCase().includes("art")).length,
+    anexos: partesPayloads.filter((item) => String(item.tipo || "").toLowerCase().includes("anex")).length,
+    disposiciones: partesPayloads.filter((item) => String(item.tipo || "").toLowerCase().includes("dispos")).length,
+  };
+}
+
+function summarizeFragmentPayload(fragment) {
+  if (!fragment) return null;
+  return {
+    tipo: fragment.tipo,
+    seccion: fragment.seccion,
+    numero: fragment.numero,
+    orden: fragment.orden,
+    texto_chars: fragment.texto.length,
+    huella: fragment.huella,
+    articulo: fragment.articulo,
+    rango: fragment.rango,
+    es_indice: fragment.es_indice,
+    jurisdiction: fragment.jurisdiction,
+    norm_type: fragment.norm_type,
+    year: fragment.year,
+    article_number: fragment.article_number,
+    apartado: fragment.apartado,
+    embedding: fragment.embedding,
+    texto_preview: fragment.texto.slice(0, 220).replace(/\s+/g, " "),
+  };
+}
+
+function printWritePlan({ normaPayload, partesPayloads, documentHash }) {
+  const counters = countPreparedFragments(partesPayloads);
+
+  console.log("\n[BOE][WRITE_PLAN] Payload de futura fila en normas:");
+  console.log(JSON.stringify(normaPayload, null, 2));
+
+  console.log("\n[BOE][WRITE_PLAN] Primer fragmento preparado:");
+  console.log(JSON.stringify(summarizeFragmentPayload(partesPayloads[0]), null, 2));
+
+  console.log("\n[BOE][WRITE_PLAN] Último fragmento preparado:");
+  console.log(JSON.stringify(summarizeFragmentPayload(partesPayloads[partesPayloads.length - 1]), null, 2));
+
+  console.log("\n[BOE][WRITE_PLAN] Contadores finales:");
+  console.log(`Total fragmentos preparados: ${counters.total}`);
+  console.log(`Artículos: ${counters.articulos}`);
+  console.log(`Anexos: ${counters.anexos}`);
+  console.log(`Disposiciones: ${counters.disposiciones}`);
+  console.log(`Document hash: ${documentHash}`);
+  console.log("Acción: READY_FOR_EXECUTE_UPLOAD");
+  console.log("[BOE][WRITE_PLAN] No se ha insertado, borrado ni generado embeddings.");
+}
+
 async function confirmUploadPreflightMode(boeId) {
   const codigo = (getArg("codigo") || "").trim();
+  const writePlan = hasFlag("write-plan");
   if (!codigo) {
     throw new Error("Falta argumento obligatorio --codigo para el preflight de publicación.");
   }
@@ -899,7 +1019,17 @@ async function confirmUploadPreflightMode(boeId) {
   console.log(`Acción futura recomendada: ${action}`);
   console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
 
-  if (hasDuplicates) process.exitCode = 1;
+  if (hasDuplicates) {
+    console.log("Acción: ABORTAR_DUPLICADO");
+    process.exitCode = 1;
+    return;
+  }
+
+  if (writePlan) {
+    const normaPayload = buildNormaPayload({ preview, codigo, documentHash });
+    const partesPayloads = buildNormasPartesPayloads({ preview, normaPayload });
+    printWritePlan({ normaPayload, partesPayloads, documentHash });
+  }
 }
 
 async function main() {
