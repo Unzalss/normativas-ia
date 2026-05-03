@@ -2011,72 +2011,9 @@ Nuevo enfoque preferente:
 
 fuente estructurada oficial/curada → fragmentación más fiable → validación admin → embeddings → publicación
 
-## Siguiente sesión
-
-La próxima sesión debe empezar analizando el nuevo camino definitivo:
-
-- cómo obtener normas desde BOE API/XML;
-- si Legalize ES sirve como fuente principal o secundaria;
-- si conviene carga manual asistida para las primeras 20 normas;
-- cómo dividir normas y anexos de forma más fiable;
-- cómo validar fuentes antes de publicar;
-- cómo incorporar IA barata como revisora de metadata/fuentes/respuesta;
-- cómo evitar seguir parcheando el parser PDF como vía principal.
-
-Decisión importante:
+## Decisión importante
 
 No seguir invirtiendo mucho más en parchear el parser PDF como camino principal. El PDF/parser queda como respaldo.
-
-
-BLOQUE COMPLETADO — IMPORTADOR BOE DRY_RUN
-
-Estado: COMPLETADO Y GUARDADO EN GITHUB
-
-Se ha creado y validado el primer importador local desde BOE API/XML:
-
-Archivo:
-tools/import-boe-norma.mjs
-
-Commit principal:
-3376062 — Add BOE dry-run importer
-
-Commits auxiliares:
-a8b3eb4 — Ignore local PDF files
-14a7b21 — Ignore local PDF test files
-
-Funcionamiento actual:
-- Ejecuta en local.
-- Requiere --boe-id.
-- Requiere --dry-run.
-- No toca Supabase.
-- No genera embeddings.
-- No modifica el buscador.
-- No toca /api/ask.
-- No toca frontend.
-- Genera preview JSON local en tools/output/.
-
-Normas probadas:
-- BOE-A-1997-8669 → RD-486-1997 → OK
-- BOE-A-2007-9607 → RD-505-2007 → OK
-- BOE-A-2017-6606 → RIPCI / RD-513-2017 → OK
-
-Mejoras conseguidas:
-- metadata correcta desde BOE
-- título correcto
-- fecha correcta
-- rango correcto
-- uso de bloques estructurados BOE
-- versiones consolidadas antiguas descartadas con warning
-- eliminación de bloques informativos no jurídicos
-- limpieza de etiquetas internas tipo [preambulo]
-- división de fragmentos grandes
-- fragmento máximo validado por debajo de 8000 caracteres
-
-Resultado:
-El camino BOE API/XML queda validado como vía principal de ingesta para el MVP administrado.
-
-Siguiente fase:
-crear publicación controlada desde preview BOE hacia Supabase, manteniendo DRY_RUN por defecto y usando --confirm-upload para escribir.
 
 ---
 
@@ -2131,5 +2068,81 @@ Siguiente fase:
 crear publicación controlada desde preview BOE hacia Supabase, manteniendo DRY_RUN por defecto y usando --confirm-upload para escribir.
 
 ---
+
+# 50. BLOQUE COMPLETADO — VALIDACIÓN DE PREVIEW BOE
+
+Estado: COMPLETADO Y GUARDADO EN GITHUB
+
+Commit:
+81f0bdb — Add BOE preview validation mode
+
+Se ha añadido al importador BOE el modo:
+
+node tools/import-boe-norma.mjs --boe-id BOE-A-XXXX-YYYY --validate-preview
+
+Funcionamiento:
+- Lee el JSON ya generado en tools/output/.
+- No descarga BOE.
+- No toca Supabase.
+- No genera embeddings.
+- No publica nada.
+- Valida metadata, stats, warnings y fragments.
+- Comprueba campos obligatorios.
+- Comprueba textos vacíos.
+- Comprueba source_label.
+- Comprueba duplicados exactos.
+- Comprueba que ningún fragmento supere 8000 caracteres.
+- Devuelve VALIDADO o NO VALIDADO.
+- Sale con error si hay errores críticos.
+
+Validaciones realizadas:
+- BOE-A-1997-8669 → VALIDADO
+- BOE-A-2017-6606 → VALIDADO
+
+Estado:
+El flujo seguro queda así:
+
+BOE → preview JSON → validate-preview → futura publicación controlada.
+
+Siguiente fase:
+programar publicación controlada a Supabase con --confirm-upload, sin pisar normas existentes por defecto.
+
+---
+
+# 51. BLOQUE COMPLETADO — PREFLIGHT DE PUBLICACIÓN BOE
+
+Estado: COMPLETADO Y GUARDADO EN GITHUB
+
+Commit:
+7df9c48 — Add BOE upload preflight
+
+Se ha añadido al importador BOE un modo de preflight para futura publicación a Supabase.
+
+Comando probado:
+node tools/import-boe-norma.mjs --boe-id BOE-A-1997-8669 --confirm-upload --codigo RD-486-1997
+
+Funcionamiento actual:
+- Lee el preview JSON local.
+- Valida internamente el preview.
+- Calcula document_hash.
+- Conecta a Supabase solo en lectura.
+- Busca duplicados por código.
+- Muestra plan de publicación.
+- Recomienda CREAR_NUEVA_NORMA o ABORTAR_DUPLICADO.
+- No inserta nada.
+- No borra nada.
+- No genera embeddings.
+
+Resultado probado:
+- RD-486-1997 detecta duplicado por código.
+- Norma existente: id=26.
+- Acción recomendada: ABORTAR_DUPLICADO.
+- No se tocaron datos.
+
+Estado del flujo:
+BOE → preview JSON → validate-preview → preflight Supabase → futura publicación controlada.
+
+Siguiente fase:
+activar escritura real con --confirm-upload cuando no haya duplicado, generando embeddings e insertando en normas/normas_partes.
 
 # FIN DE FOTO FIJA
