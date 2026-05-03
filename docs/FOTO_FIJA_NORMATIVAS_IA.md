@@ -1,4 +1,4 @@
-# FOTO FIJA — PROYECTO NORMATIVAS IA
+﻿# FOTO FIJA — PROYECTO NORMATIVAS IA
 
 Última actualización: 2026-04-30  
 Estado: referencia oficial vigente del proyecto tras cierre del bloque de estabilización de sources, priorización y consultas por artículo exacto
@@ -1942,5 +1942,194 @@ Fecha: 2026-05-03
   - IA final,
   - posible IA revisora barata para validar fuentes/respuesta.
 
-# FIN DE FOTO FIJA
+---
 
+# 48. DECISIÓN DE ARQUITECTURA — BIBLIOTECA JURÍDICA ADMINISTRADA
+
+Fecha: 2026-05-03
+
+Decisión tomada:
+
+El MVP de Normativas IA pasa a orientarse como una **biblioteca jurídica administrada**, no como una plataforma donde cualquier usuario sube normas libremente.
+
+## Decisión funcional
+
+- Solo el administrador subirá, validará y publicará normas.
+- Los usuarios finales consultarán la base normativa ya curada.
+- En el MVP, los usuarios no subirán normas propias libremente.
+- El sistema se parecerá más a una plataforma jurídica profesional: base documental controlada, normas validadas y fuentes fiables.
+
+## Motivo de la decisión
+
+Durante la validación de RIPCI se ha visto que:
+
+- subir PDFs reales y fragmentarlos correctamente es más difícil de lo que parecía;
+- los anexos técnicos generan problemas de corte, ranking y citas;
+- las consultas por artículo exacto funcionan muy bien;
+- las consultas temáticas dependen muchísimo de la calidad de fragmentación y recuperación;
+- permitir subida libre a usuarios aumentaría errores, soporte y riesgo de respuestas malas.
+
+Conclusión:
+
+Para un MVP serio, es mejor que el administrador controle la calidad documental.
+
+## Nueva prioridad de ingesta
+
+La ingesta principal debe priorizar fuentes estructuradas:
+
+1. BOE API/XML o legislación consolidada oficial.
+2. Legalize ES como posible apoyo para Markdown/histórico de cambios, previa validación.
+3. PDF/parser local solo como respaldo para normas sin fuente estructurada clara, ordenanzas municipales o documentos especiales.
+
+## Qué se mantiene
+
+No se tira el trabajo actual.
+
+Se mantiene:
+
+- Supabase
+- `normas`
+- `normas_partes`
+- embeddings
+- RAG
+- `/api/ask`
+- frontend actual
+- panel de fuentes
+- consulta por artículo exacto
+- parser PDF local como herramienta auxiliar
+- script `tools/upload-norma-ia-local.mjs` como respaldo técnico
+
+## Qué cambia
+
+Cambia principalmente el flujo de ingesta:
+
+Antes:
+
+PDF subido → parser local → fragmentos → embeddings
+
+Nuevo enfoque preferente:
+
+fuente estructurada oficial/curada → fragmentación más fiable → validación admin → embeddings → publicación
+
+## Siguiente sesión
+
+La próxima sesión debe empezar analizando el nuevo camino definitivo:
+
+- cómo obtener normas desde BOE API/XML;
+- si Legalize ES sirve como fuente principal o secundaria;
+- si conviene carga manual asistida para las primeras 20 normas;
+- cómo dividir normas y anexos de forma más fiable;
+- cómo validar fuentes antes de publicar;
+- cómo incorporar IA barata como revisora de metadata/fuentes/respuesta;
+- cómo evitar seguir parcheando el parser PDF como vía principal.
+
+Decisión importante:
+
+No seguir invirtiendo mucho más en parchear el parser PDF como camino principal. El PDF/parser queda como respaldo.
+
+
+BLOQUE COMPLETADO — IMPORTADOR BOE DRY_RUN
+
+Estado: COMPLETADO Y GUARDADO EN GITHUB
+
+Se ha creado y validado el primer importador local desde BOE API/XML:
+
+Archivo:
+tools/import-boe-norma.mjs
+
+Commit principal:
+3376062 — Add BOE dry-run importer
+
+Commits auxiliares:
+a8b3eb4 — Ignore local PDF files
+14a7b21 — Ignore local PDF test files
+
+Funcionamiento actual:
+- Ejecuta en local.
+- Requiere --boe-id.
+- Requiere --dry-run.
+- No toca Supabase.
+- No genera embeddings.
+- No modifica el buscador.
+- No toca /api/ask.
+- No toca frontend.
+- Genera preview JSON local en tools/output/.
+
+Normas probadas:
+- BOE-A-1997-8669 → RD-486-1997 → OK
+- BOE-A-2007-9607 → RD-505-2007 → OK
+- BOE-A-2017-6606 → RIPCI / RD-513-2017 → OK
+
+Mejoras conseguidas:
+- metadata correcta desde BOE
+- título correcto
+- fecha correcta
+- rango correcto
+- uso de bloques estructurados BOE
+- versiones consolidadas antiguas descartadas con warning
+- eliminación de bloques informativos no jurídicos
+- limpieza de etiquetas internas tipo [preambulo]
+- división de fragmentos grandes
+- fragmento máximo validado por debajo de 8000 caracteres
+
+Resultado:
+El camino BOE API/XML queda validado como vía principal de ingesta para el MVP administrado.
+
+Siguiente fase:
+crear publicación controlada desde preview BOE hacia Supabase, manteniendo DRY_RUN por defecto y usando --confirm-upload para escribir.
+
+---
+
+# 49. BLOQUE COMPLETADO — IMPORTADOR BOE DRY_RUN
+
+Estado: COMPLETADO Y GUARDADO EN GITHUB
+
+Se ha creado y validado el primer importador local desde BOE API/XML:
+
+Archivo:
+tools/import-boe-norma.mjs
+
+Commit principal:
+3376062 — Add BOE dry-run importer
+
+Commits auxiliares:
+a8b3eb4 — Ignore local PDF files
+14a7b21 — Ignore local PDF test files
+
+Funcionamiento actual:
+- Ejecuta en local.
+- Requiere --boe-id.
+- Requiere --dry-run.
+- No toca Supabase.
+- No genera embeddings.
+- No modifica el buscador.
+- No toca /api/ask.
+- No toca frontend.
+- Genera preview JSON local en tools/output/.
+
+Normas probadas:
+- BOE-A-1997-8669 → RD-486-1997 → OK
+- BOE-A-2007-9607 → RD-505-2007 → OK
+- BOE-A-2017-6606 → RIPCI / RD-513-2017 → OK
+
+Mejoras conseguidas:
+- metadata correcta desde BOE
+- título correcto
+- fecha correcta
+- rango correcto
+- uso de bloques estructurados BOE
+- versiones consolidadas antiguas descartadas con warning
+- eliminación de bloques informativos no jurídicos
+- limpieza de etiquetas internas tipo [preambulo]
+- división de fragmentos grandes
+- fragmento máximo validado por debajo de 8000 caracteres
+
+Resultado:
+El camino BOE API/XML queda validado como vía principal de ingesta para el MVP administrado.
+
+Siguiente fase:
+crear publicación controlada desde preview BOE hacia Supabase, manteniendo DRY_RUN por defecto y usando --confirm-upload para escribir.
+
+---
+
+# FIN DE FOTO FIJA

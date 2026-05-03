@@ -24,16 +24,17 @@ function hasFlag(name) {
 function requireArgs() {
   const boeId = getArg("boe-id");
   const dryRun = hasFlag("dry-run");
+  const validatePreview = hasFlag("validate-preview");
 
   if (!boeId) throw new Error("Falta argumento obligatorio --boe-id");
   if (!/^BOE-A-\d{4}-\d+$/i.test(boeId)) {
     throw new Error(`Formato BOE inválido: ${boeId}. Esperado: BOE-A-YYYY-NNNN`);
   }
-  if (!dryRun) {
-    throw new Error("Esta primera versión exige --dry-run. Abortando sin descargar ni procesar.");
+  if (!dryRun && !validatePreview) {
+    throw new Error("Esta primera versión exige --dry-run o --validate-preview. Abortando sin descargar ni procesar.");
   }
 
-  return { boeId: boeId.toUpperCase() };
+  return { boeId: boeId.toUpperCase(), dryRun, validatePreview };
 }
 
 function decodeXmlEntities(text) {
@@ -607,9 +608,163 @@ function printSummary({ metadata, stats, warnings, fragments }) {
   });
 }
 
+async function readPreviewJson(boeId) {
+  const outputPath = path.join(OUTPUT_DIR, `boe-preview-${boeId}.json`);
+  let raw;
+
+  try {
+    raw = await fs.readFile(outputPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error(`No existe el preview local: ${outputPath}`);
+    }
+    throw error;
+  }
+
+  try {
+    return {
+      outputPath,
+      preview: JSON.parse(raw),
+    };
+  } catch (error) {
+    throw new Error(`El preview no es JSON válido: ${outputPath}. Detalle: ${error.message}`);
+  }
+}
+
+function validatePreviewShape(preview, expectedBoeId) {
+  const errors = [];
+  const warnings = Array.isArray(preview?.warnings) ? [...preview.warnings] : [];
+
+  if (!preview || typeof preview !== "object") {
+    return {
+      errors: ["El preview no es un objeto JSON."],
+      warnings,
+      stats: {
+        total: 0,
+        articulos: 0,
+        anexos: 0,
+        disposiciones: 0,
+        maxLength: 0,
+      },
+    };
+  }
+
+  if (!preview.metadata || typeof preview.metadata !== "object") errors.push("Falta objeto metadata.");
+  if (!preview.stats || typeof preview.stats !== "object") errors.push("Falta objeto stats.");
+  if (!Array.isArray(preview.warnings)) errors.push("Falta array warnings.");
+  if (!Array.isArray(preview.fragments)) errors.push("Falta array fragments.");
+
+  const metadata = preview.metadata || {};
+  const requiredMetadata = ["boeId", "titulo", "rango", "fecha", "identificador", "source_url"];
+  for (const field of requiredMetadata) {
+    if (!metadata[field] || typeof metadata[field] !== "string") {
+      errors.push(`Metadata incompleta: falta ${field}.`);
+    }
+  }
+  if (metadata.boeId && String(metadata.boeId).toUpperCase() !== expectedBoeId) {
+    errors.push(`Metadata boeId no coincide: ${metadata.boeId} != ${expectedBoeId}.`);
+  }
+
+  const fragments = Array.isArray(preview.fragments) ? preview.fragments : [];
+  if (fragments.length === 0) errors.push("No hay fragmentos.");
+
+  const textHashes = new Map();
+  let maxLength = 0;
+
+  fragments.forEach((fragment, index) => {
+    const prefix = `Fragmento ${index + 1}`;
+    const requiredFields = ["tipo", "seccion", "orden", "texto", "source_label"];
+    for (const field of requiredFields) {
+      if (fragment?.[field] === undefined || fragment?.[field] === null || fragment?.[field] === "") {
+        errors.push(`${prefix}: falta ${field}.`);
+      }
+    }
+
+    if (typeof fragment?.texto !== "string" || fragment.texto.trim().length === 0) {
+      errors.push(`${prefix}: texto vacío.`);
+      return;
+    }
+
+    if (typeof fragment?.source_label !== "string" || fragment.source_label.trim().length === 0) {
+      errors.push(`${prefix}: source_label vacío.`);
+    }
+
+    if (!Number.isInteger(fragment?.orden) || fragment.orden <= 0) {
+      errors.push(`${prefix}: orden inválido.`);
+    }
+
+    maxLength = Math.max(maxLength, fragment.texto.length);
+    if (fragment.texto.length > MAX_FRAGMENT_LENGTH) {
+      errors.push(`${prefix}: supera ${MAX_FRAGMENT_LENGTH} caracteres (${fragment.texto.length}).`);
+    }
+
+    const previous = textHashes.get(fragment.texto);
+    if (previous !== undefined) {
+      errors.push(`${prefix}: texto duplicado exacto con fragmento ${previous + 1}.`);
+    } else {
+      textHashes.set(fragment.texto, index);
+    }
+  });
+
+  return {
+    errors,
+    warnings,
+    stats: {
+      total: fragments.length,
+      articulos: fragments.filter((f) => String(f?.tipo || "").toLowerCase().includes("art")).length,
+      anexos: fragments.filter((f) => String(f?.tipo || "").toLowerCase().includes("anex")).length,
+      disposiciones: fragments.filter((f) => String(f?.tipo || "").toLowerCase().includes("dispos")).length,
+      maxLength,
+    },
+  };
+}
+
+async function validatePreviewMode(boeId) {
+  const { outputPath, preview } = await readPreviewJson(boeId);
+  const result = validatePreviewShape(preview, boeId);
+  const metadata = preview?.metadata || {};
+  const stats = preview?.stats || {};
+
+  console.log("\n[BOE][VALIDATE_PREVIEW] Validación de preview local");
+  console.log(`Archivo: ${outputPath}`);
+  console.log(`Título: ${metadata.titulo || "N/D"}`);
+  console.log(`BOE ID: ${metadata.boeId || "N/D"}`);
+  console.log(`Fecha: ${metadata.fecha || "N/D"}`);
+  console.log(`Total fragmentos: ${result.stats.total}`);
+  console.log(`Artículos: ${stats.articulos_detectados ?? result.stats.articulos}`);
+  console.log(`Anexos: ${stats.anexos_detectados ?? result.stats.anexos}`);
+  console.log(`Disposiciones: ${stats.disposiciones_detectadas ?? result.stats.disposiciones}`);
+  console.log(`Fragmento máximo: ${stats.fragmento_mas_largo ?? result.stats.maxLength} caracteres`);
+
+  console.log("\nErrores:");
+  if (result.errors.length === 0) {
+    console.log("- Ninguno");
+  } else {
+    result.errors.forEach((error) => console.log(`- ${error}`));
+  }
+
+  console.log("\nWarnings:");
+  if (result.warnings.length === 0) {
+    console.log("- Ninguno");
+  } else {
+    result.warnings.forEach((warning) => console.log(`- ${warning}`));
+  }
+
+  const ok = result.errors.length === 0;
+  console.log(`\nResultado final: ${ok ? "VALIDADO" : "NO VALIDADO"}`);
+  console.log("[BOE][VALIDATE_PREVIEW] No se ha tocado Supabase ni se han generado embeddings.");
+
+  if (!ok) process.exitCode = 1;
+}
+
 async function main() {
-  const { boeId } = requireArgs();
+  const { boeId, validatePreview } = requireArgs();
   const warnings = [];
+
+  if (validatePreview) {
+    await validatePreviewMode(boeId);
+    return;
+  }
 
   console.log(`[BOE] Descargando XML: ${boeId}`);
   const { url, xml } = await fetchBoeXml(boeId);
