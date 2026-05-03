@@ -398,7 +398,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                 )}
                                                 {cita && (
                                                     <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
-                                                        <div className={styles.blockLabel}>Artículos citados</div>
+                                                        <div className={styles.blockLabel}>Fuentes citadas</div>
                                                         <div className={styles.citaList}>
                                                             {renderCitations(cita)}
                                                         </div>

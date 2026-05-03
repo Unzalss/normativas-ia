@@ -148,7 +148,7 @@ export default function Home() {
                     const citations = (json.data || []).map((item: any, index: number) => ({
                         id: item.id ? String(item.id) : `cit-${index}`,
                         sourceId: item.id ? String(item.id) : `src-${index}`,
-                        text: cleanCitation(item.seccion || `Fragmento ${index + 1}`)
+                        text: cleanCitation(item.source_label || item.seccion || `Fragmento ${index + 1}`)
                     }));
 
                     newResponse = {
@@ -200,7 +200,11 @@ export default function Home() {
 
                         // 2) Subtitle logic (Artículo or Sección) — strip internal block markers
                         let sourceSubtitle = "";
-                        if (item.articulo) {
+                        if (item.source_label) {
+                            sourceSubtitle = cleanCitation(item.source_label);
+                        } else if (item.tipo === "Anexo" && item.seccion) {
+                            sourceSubtitle = cleanCitation(item.seccion);
+                        } else if (item.articulo) {
                             sourceSubtitle = cleanCitation(item.articulo);
                         } else if (item.seccion) {
                             sourceSubtitle = cleanCitation(item.seccion);
@@ -225,11 +229,14 @@ export default function Home() {
                         };
                     });
 
-                    // Sort newSources by norma_id, then numerically by article number
+                    // Sort articles numerically, but preserve backend ranking for annexes and thematic fragments.
                     newSources.sort((a, b) => {
                         const normaA = typeof a.normaId === 'number' ? a.normaId : 0;
                         const normaB = typeof b.normaId === 'number' ? b.normaId : 0;
                         if (normaA !== normaB) return normaA - normaB;
+                        const aIsArticle = /^art[íi]culo\b/i.test(a.subtitle || '');
+                        const bIsArticle = /^art[íi]culo\b/i.test(b.subtitle || '');
+                        if (!aIsArticle || !bIsArticle) return 0;
                         
                         const getNum = (str: string) => {
                             const match = str.match(/\d+/);

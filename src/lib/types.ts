@@ -36,6 +36,7 @@ export interface Source {
     articulo_detectado?: string;
     capitulo_detectado?: string;
     titulo_articulo?: string;
+    source_label?: string;
     highlight?: string;
 }
 

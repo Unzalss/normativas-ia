@@ -290,13 +290,26 @@ export async function POST(req: Request) {
             return 0;
         };
 
+        const normalizeForSearch = (value: any) =>
+            String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+        const buildSourceLabel = (item: any) => {
+            const tipo = normalizeForSearch(item.tipo);
+            if (tipo.includes("anexo") && item.seccion) return String(item.seccion).trim();
+            if (tipo.includes("art")) {
+                const rawNumber = item.article_number || item.numero || String(item.articulo || item.seccion || "").match(/\d+/)?.[0];
+                return rawNumber ? `Artículo ${rawNumber}` : String(item.articulo || item.seccion || "Artículo").trim();
+            }
+            return String(item.seccion || item.articulo || item.tipo || "Fragmento normativo").trim();
+        };
+
         // --- Debug: full detection trace ---
         console.log(`[ASK] Pregunta: "${question}"`);
         console.log(`[ASK] parsedNormaId FINAL antes de RPC: ${parsedNormaId ?? "null (búsqueda global)"}`);
         console.log(`[ASK] detectedNormaCodigo=${detectedNormaCodigo ?? "null"} | detectedMateria=${detectedMateria ?? "null"}`);
         console.log(`[HYBRID SEARCH] Filtro norma: ${parsedNormaId ?? "TODAS"} | Pregunta: ${question.substring(0, 60)}...`);
 
-        const qNormalized = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const qNormalized = normalizeForSearch(question);
         const anexoTopicTerms = [
             "mantenimiento", "revision", "revisiones", "trimestral", "anual", "cinco anos",
             "deteccion", "alarma", "extintores", "extintor", "bie", "bocas de incendio"
@@ -571,6 +584,9 @@ export async function POST(req: Request) {
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
         );
+        validData.forEach((item: any) => {
+            item.source_label = buildSourceLabel(item);
+        });
 
         console.log("=== DEBUG VALID DATA ===");
         console.log("validData_count:", validData?.length);
@@ -579,11 +595,27 @@ export async function POST(req: Request) {
 
         if (isTechnicalAnexoQuery && !articuloMencionado) {
             const scoreAnexoKeyword = (item: any) => {
-                const seccion = String(item.seccion || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-                const texto = String(item.texto || item.content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                const seccion = normalizeForSearch(item.seccion);
+                const texto = normalizeForSearch(item.texto || item.content);
+                const tipo = normalizeForSearch(item.tipo);
                 let boost = 0;
 
-                if (String(item.tipo || "").toLowerCase().includes("anexo")) boost += 0.25;
+                if (tipo.includes("anexo")) boost += 0.25;
+                if (tipo.includes("art")) boost -= 0.35;
+                if (/^anexo(?:\s+[ivx]+)?$/i.test(String(item.seccion || "").trim())) boost -= 0.45;
+                if (String(item.texto || item.content || "").length < 500) boost -= 0.30;
+
+                if (qNormalized.includes("extintor") && seccion.includes("extintores de incendio")) boost += 1.40;
+                if ((qNormalized.includes("bie") || qNormalized.includes("bocas de incendio")) && seccion.includes("bocas de incendio equipadas")) boost += 1.40;
+
+                const isDetectionMaintenanceQuery =
+                    (qNormalized.includes("mantenimiento") || qNormalized.includes("revision") || qNormalized.includes("revisiones")) &&
+                    (qNormalized.includes("deteccion") || qNormalized.includes("alarma"));
+                if (isDetectionMaintenanceQuery && seccion.includes("anexo ii")) boost += 1.20;
+                if (isDetectionMaintenanceQuery && (seccion.includes("deteccion") || texto.includes("deteccion"))) boost += 0.45;
+                if (isDetectionMaintenanceQuery && (seccion.includes("alarma") || texto.includes("alarma"))) boost += 0.45;
+                if (isDetectionMaintenanceQuery && (seccion.includes("mantenimiento") || texto.includes("mantenimiento"))) boost += 0.35;
+
                 for (const term of anexoTopicTerms) {
                     if (qNormalized.includes(term) && seccion.includes(term)) boost += 0.20;
                     if (qNormalized.includes(term) && texto.includes(term)) boost += 0.08;
@@ -729,13 +761,13 @@ export async function POST(req: Request) {
                 // --- Reconstruct complete articles from fragments -------------------
                 // seccion values look like "Artículo 5 [Bloque 3]".
                 // Strip the internal block marker to get the base article reference.
-                const baseArticle = (sec: string) =>
-                    sec ? sec.replace(/\s*\[Bloque\s+\d+\]/gi, "").trim() : "";
+                const baseArticle = (frag: any) =>
+                    buildSourceLabel(frag).replace(/\s*\[Bloque\s+\d+\]/gi, "").trim();
 
                 // Group all fragments (not just the top slice) by their base article key
                 const articleMap = new Map<string, any[]>();
                 for (const frag of validData) {
-                    const key = baseArticle(frag.seccion || "") || `__frag_${frag.id}`;
+                    const key = baseArticle(frag) || `__frag_${frag.id}`;
                     if (!articleMap.has(key)) articleMap.set(key, []);
                     articleMap.get(key)!.push(frag);
                 }
@@ -747,8 +779,15 @@ export async function POST(req: Request) {
 
                 // Build context from reconstructed articles, capped at 12 entries
                 // Each entry = one logical article (possibly multiple fragments joined)
-                const reconstructedArticles = Array.from(articleMap.entries())
-                    .slice(0, 12)
+                const contextGroups = Array.from(articleMap.entries()).slice(0, 12);
+                console.log("[ASK][CONTEXT] Fragmentos/grupos enviados al modelo:");
+                contextGroups.slice(0, 10).forEach(([label, frags], i) => {
+                    const first = frags[0] || {};
+                    const snippet = String(first.texto || first.content || "").substring(0, 120).replace(/\n/g, " ");
+                    console.log(`[ASK][CONTEXT][${i + 1}] tipo=${first.tipo || "N/A"} | seccion="${label}" | score=${getScore(first).toFixed(3)} | texto="${snippet}"`);
+                });
+
+                const reconstructedArticles = contextGroups
                     .map(([label, frags], i) => {
                         const fullText = frags
                             .map((f: any) => f.texto || f.content || "")
@@ -951,6 +990,10 @@ No mezclar ambos en un mismo párrafo.`,
 
         let finalAnswer = isNoInfo ? "No consta en las normas consultadas." : answer;
         let finalDataArr = isNoInfo ? [] : processedData;
+        finalDataArr = finalDataArr.map((item: any) => ({
+            ...item,
+            source_label: item.source_label || buildSourceLabel(item),
+        }));
 
         // Última comprobación de seguridad estructural exigida por la foto fija
         if (!finalAnswer || finalAnswer.trim() === "" || finalDataArr.length === 0) {
