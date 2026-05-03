@@ -2145,4 +2145,39 @@ BOE → preview JSON → validate-preview → preflight Supabase → futura publ
 Siguiente fase:
 activar escritura real con --confirm-upload cuando no haya duplicado, generando embeddings e insertando en normas/normas_partes.
 
+# 52. BLOQUE COMPLETADO — WRITE PLAN DE PUBLICACIÓN BOE
+
+Estado: COMPLETADO Y GUARDADO EN GITHUB
+
+Commit:
+702e600 — Add BOE write plan mode
+
+Se ha añadido al importador BOE el modo:
+
+node tools/import-boe-norma.mjs --boe-id BOE-A-XXXX-YYYY --confirm-upload --codigo CODIGO --write-plan
+
+Funcionamiento:
+- Lee el preview JSON local.
+- Valida internamente el preview.
+- Ejecuta preflight contra Supabase.
+- Si detecta duplicado, aborta.
+- Si no detecta duplicado, construye el payload exacto que se insertaría.
+- Muestra la futura fila de normas.
+- Muestra el primer fragmento preparado.
+- Muestra el último fragmento preparado.
+- Muestra contadores finales.
+- No inserta nada.
+- No borra nada.
+- No genera embeddings.
+
+Pruebas realizadas:
+- RD-486-1997 → detecta duplicado y aborta.
+- TEST-BOE-486 → muestra READY_FOR_EXECUTE_UPLOAD y payloads correctos.
+
+Estado del flujo:
+BOE → preview JSON → validate-preview → preflight Supabase → write-plan → futura ejecución real.
+
+Siguiente fase:
+activar ejecución real controlada con embeddings e inserción en Supabase.
+
 # FIN DE FOTO FIJA
