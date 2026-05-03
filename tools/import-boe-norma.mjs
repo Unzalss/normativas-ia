@@ -1,5 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
+import dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
+
+dotenv.config({ path: ".env.local", quiet: true });
+dotenv.config({ quiet: true });
 
 const BOE_TEXT_URL = "https://www.boe.es/datosabiertos/api/legislacion-consolidada/id";
 const OUTPUT_DIR = path.join("tools", "output");
@@ -25,16 +31,17 @@ function requireArgs() {
   const boeId = getArg("boe-id");
   const dryRun = hasFlag("dry-run");
   const validatePreview = hasFlag("validate-preview");
+  const confirmUpload = hasFlag("confirm-upload");
 
   if (!boeId) throw new Error("Falta argumento obligatorio --boe-id");
   if (!/^BOE-A-\d{4}-\d+$/i.test(boeId)) {
     throw new Error(`Formato BOE inválido: ${boeId}. Esperado: BOE-A-YYYY-NNNN`);
   }
-  if (!dryRun && !validatePreview) {
-    throw new Error("Esta primera versión exige --dry-run o --validate-preview. Abortando sin descargar ni procesar.");
+  if (!dryRun && !validatePreview && !confirmUpload) {
+    throw new Error("Esta primera versión exige --dry-run, --validate-preview o --confirm-upload. Abortando sin descargar ni procesar.");
   }
 
-  return { boeId: boeId.toUpperCase(), dryRun, validatePreview };
+  return { boeId: boeId.toUpperCase(), dryRun, validatePreview, confirmUpload };
 }
 
 function decodeXmlEntities(text) {
@@ -757,12 +764,155 @@ async function validatePreviewMode(boeId) {
   if (!ok) process.exitCode = 1;
 }
 
+function previewDocumentHash(preview) {
+  const hashPayload = {
+    boeId: preview?.metadata?.boeId || null,
+    identificador: preview?.metadata?.identificador || null,
+    source_url: preview?.metadata?.source_url || null,
+    titulo: preview?.metadata?.titulo || null,
+    fecha: preview?.metadata?.fecha || null,
+    fragments: Array.isArray(preview?.fragments)
+      ? preview.fragments.map((fragment) => ({
+          tipo: fragment.tipo || null,
+          seccion: fragment.seccion || null,
+          orden: fragment.orden || null,
+          texto: fragment.texto || "",
+          source_label: fragment.source_label || null,
+          fuente_bloque_id: fragment.fuente_bloque_id || null,
+          fuente_version_fecha: fragment.fuente_version_fecha || null,
+        }))
+      : [],
+  };
+
+  return crypto.createHash("sha256").update(JSON.stringify(hashPayload)).digest("hex");
+}
+
+async function fetchDuplicateNormas({ supabase, codigo, sourceUrl, documentHash }) {
+  const duplicateGroups = [];
+
+  const queries = [
+    {
+      label: "codigo",
+      enabled: Boolean(codigo),
+      query: () => supabase
+        .from("normas")
+        .select("id,codigo,titulo,estado_ingesta,num_fragmentos,document_hash,url_fuente")
+        .eq("codigo", codigo)
+        .is("owner_user_id", null),
+    },
+    {
+      label: "url_fuente",
+      enabled: Boolean(sourceUrl),
+      query: () => supabase
+        .from("normas")
+        .select("id,codigo,titulo,estado_ingesta,num_fragmentos,document_hash,url_fuente")
+        .eq("url_fuente", sourceUrl)
+        .is("owner_user_id", null),
+    },
+    {
+      label: "document_hash",
+      enabled: Boolean(documentHash),
+      query: () => supabase
+        .from("normas")
+        .select("id,codigo,titulo,estado_ingesta,num_fragmentos,document_hash,url_fuente")
+        .eq("document_hash", documentHash)
+        .is("owner_user_id", null),
+    },
+  ];
+
+  for (const item of queries) {
+    if (!item.enabled) continue;
+    const { data, error } = await item.query();
+    if (error) throw new Error(`Error consultando duplicados por ${item.label}: ${error.message}`);
+    if (data && data.length > 0) {
+      duplicateGroups.push({ label: item.label, rows: data });
+    }
+  }
+
+  return duplicateGroups;
+}
+
+function printDuplicateSummary(duplicateGroups) {
+  if (duplicateGroups.length === 0) {
+    console.log("Duplicados: ninguno");
+    return;
+  }
+
+  console.log("Duplicados encontrados:");
+  duplicateGroups.forEach((group) => {
+    console.log(`- Por ${group.label}:`);
+    group.rows.forEach((row) => {
+      console.log(`  id=${row.id} | codigo=${row.codigo || "N/D"} | estado_ingesta=${row.estado_ingesta || "N/D"} | fragmentos=${row.num_fragmentos ?? "N/D"}`);
+      console.log(`  titulo=${row.titulo || "N/D"}`);
+    });
+  });
+}
+
+async function confirmUploadPreflightMode(boeId) {
+  const codigo = (getArg("codigo") || "").trim();
+  if (!codigo) {
+    throw new Error("Falta argumento obligatorio --codigo para el preflight de publicación.");
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl) throw new Error("Falta variable SUPABASE_URL.");
+  if (!supabaseKey) throw new Error("Falta variable SUPABASE_SERVICE_ROLE_KEY.");
+
+  const { outputPath, preview } = await readPreviewJson(boeId);
+  const validation = validatePreviewShape(preview, boeId);
+  if (validation.errors.length > 0) {
+    console.log("\n[BOE][PRE_FLIGHT] Preview NO VALIDADO. Abortando antes de consultar Supabase.");
+    validation.errors.forEach((error) => console.log(`- ${error}`));
+    process.exitCode = 1;
+    return;
+  }
+
+  const metadata = preview.metadata;
+  const stats = preview.stats || {};
+  const documentHash = previewDocumentHash(preview);
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const duplicateGroups = await fetchDuplicateNormas({
+    supabase,
+    codigo,
+    sourceUrl: metadata.source_url,
+    documentHash,
+  });
+
+  const hasDuplicates = duplicateGroups.length > 0;
+  const action = hasDuplicates ? "ABORTAR_DUPLICADO" : "CREAR_NUEVA_NORMA";
+
+  console.log("\n[BOE][PRE_FLIGHT] Plan de publicación controlada");
+  console.log(`Archivo preview: ${outputPath}`);
+  console.log(`BOE ID: ${metadata.boeId}`);
+  console.log(`Código: ${codigo}`);
+  console.log(`Título: ${metadata.titulo}`);
+  console.log(`Fecha: ${metadata.fecha}`);
+  console.log(`Source URL: ${metadata.source_url}`);
+  console.log(`Document hash preview: ${documentHash}`);
+  console.log(`Fragmentos: ${preview.fragments.length}`);
+  console.log(`Artículos: ${stats.articulos_detectados ?? validation.stats.articulos}`);
+  console.log(`Anexos: ${stats.anexos_detectados ?? validation.stats.anexos}`);
+  console.log(`Fragmento máximo: ${stats.fragmento_mas_largo ?? validation.stats.maxLength} caracteres`);
+  printDuplicateSummary(duplicateGroups);
+  console.log(`Acción futura recomendada: ${action}`);
+  console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
+
+  if (hasDuplicates) process.exitCode = 1;
+}
+
 async function main() {
-  const { boeId, validatePreview } = requireArgs();
+  const { boeId, validatePreview, confirmUpload } = requireArgs();
   const warnings = [];
 
   if (validatePreview) {
     await validatePreviewMode(boeId);
+    return;
+  }
+
+  if (confirmUpload) {
+    await confirmUploadPreflightMode(boeId);
     return;
   }
 
