@@ -145,8 +145,8 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                     <div className={styles.homeContent}>
                         <div className={styles.heroSection}>
-                            <h2 className={styles.heroTitle}>Buscador Normativo Profesional</h2>
-                            <p className={styles.heroSubtitle}>Localice requisitos específicos en el articulado consolidado del CTE, Eurocódigos y normativa industrial.</p>
+                            <h2 className={styles.heroTitle}>Consulta normativa técnica para arquitectura</h2>
+                            <p className={styles.heroSubtitle}>Pregunta sobre CTE, incendios, accesibilidad, seguridad de uso y prevención. Obtén respuestas claras con artículos y fuentes citadas.</p>
                         </div>
 
                         <div className={styles.homeSearchWrapper}>
@@ -154,7 +154,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                 <Search className={styles.searchIconLarge} size={24} />
                                 <textarea
                                     className={styles.homeTextarea}
-                                    placeholder="Describa el requisito técnico o artículo a consultar..."
+                                    placeholder="Ejemplo: ¿Qué anchura mínima debe tener una salida de evacuación?"
                                     value={text}
                                     onChange={(e) => setText(e.target.value)}
                                     onKeyDown={(e) => {
@@ -207,21 +207,21 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                         <div className={styles.homeExamples}>
                             <h4 className={styles.examplesLabel}>Ejemplos de consulta técnica</h4>
                             <div className={styles.examplesGrid}>
-                                <button className={styles.exampleCard} onClick={() => onQuery("Resistencia al fuego en vigas de acero")}>
+                                <button className={styles.exampleCard} onClick={() => onQuery("¿Qué dice el artículo 7 del RD-486-1997?")}>
                                     <FileText size={18} className={styles.exampleIcon} />
-                                    <span>Resistencia al fuego en vigas de acero (DB-SI)</span>
+                                    <span>¿Qué dice el artículo 7 del RD-486-1997?</span>
                                 </button>
-                                <button className={styles.exampleCard} onClick={() => onQuery("Pendiente máxima en rampas de garaje")}>
+                                <button className={styles.exampleCard} onClick={() => onQuery("¿Qué temperatura deben tener los locales de trabajo cerrados?")}>
                                     <FileText size={18} className={styles.exampleIcon} />
-                                    <span>Pendiente máxima en rampas de garaje (DB-SUA)</span>
+                                    <span>¿Qué temperatura deben tener los locales de trabajo cerrados?</span>
                                 </button>
-                                <button className={styles.exampleCard} onClick={() => onQuery("Transmitancia térmica muros sótano")}>
+                                <button className={styles.exampleCard} onClick={() => onQuery("¿Qué condiciones básicas de accesibilidad establece el RD-505-2007?")}>
                                     <FileText size={18} className={styles.exampleIcon} />
-                                    <span>Transmitancia térmica muros sótano (DB-HE)</span>
+                                    <span>¿Qué condiciones básicas de accesibilidad establece el RD-505-2007?</span>
                                 </button>
-                                <button className={styles.exampleCard} onClick={() => onQuery("Ventilación mínima en cocinas industriales")}>
+                                <button className={styles.exampleCard} onClick={() => onQuery("¿Cada cuánto deben revisarse los extintores?")}>
                                     <FileText size={18} className={styles.exampleIcon} />
-                                    <span>Ventilación mínima en cocinas industriales (RITE)</span>
+                                    <span>¿Cada cuánto deben revisarse los extintores?</span>
                                 </button>
                             </div>
                         </div>
