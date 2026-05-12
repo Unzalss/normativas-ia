@@ -296,6 +296,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     const fundamentoNormativo = extract('Fundamento normativo');
                     const cita               = extract('Cita');
                     const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
+                    const criterioPractico   = respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
 
 
 
@@ -384,6 +385,12 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                     <>
                                         {isStructured ? (
                                             <div className={styles.structuredBlocks}>
+                                                {criterioPractico && (
+                                                    <div className={styles.practicalBlock}>
+                                                        <div className={styles.practicalLabel}>Criterio práctico</div>
+                                                        <p className={styles.practicalText}>{criterioPractico}</p>
+                                                    </div>
+                                                )}
                                                 {respuestaBreve && (
                                                     <div className={styles.responseBlock}>
                                                         <div className={styles.blockLabel}>Respuesta breve</div>
@@ -406,11 +413,19 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className={styles.responseText}>
-                                                {text.split('\n\n').map((paragraph, i) => (
-                                                    <p key={i}>{paragraph}</p>
-                                                ))}
-                                            </div>
+                                            <>
+                                                {criterioPractico && (
+                                                    <div className={styles.practicalBlock}>
+                                                        <div className={styles.practicalLabel}>Criterio práctico</div>
+                                                        <p className={styles.practicalText}>{criterioPractico}</p>
+                                                    </div>
+                                                )}
+                                                <div className={styles.responseText}>
+                                                    {text.split('\n\n').map((paragraph, i) => (
+                                                        <p key={i}>{paragraph}</p>
+                                                    ))}
+                                                </div>
+                                            </>
                                         )}
                                     </>
                                 ) : (

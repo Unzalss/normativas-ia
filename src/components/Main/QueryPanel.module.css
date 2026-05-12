@@ -648,37 +648,90 @@
 .structuredBlocks {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1rem;
+}
+
+.practicalBlock {
+    background: #F8FAFC;
+    border: 1px solid #CBD5E1;
+    border-left: 4px solid #0F766E;
+    border-radius: 8px;
+    padding: 1.35rem 1.6rem;
+}
+
+.practicalLabel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #0F766E;
+    margin-bottom: 0.65rem;
+}
+
+.practicalLabel::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #0F766E;
+}
+
+.practicalText {
+    font-size: 1.2rem;
+    line-height: 1.75;
+    color: #0F172A;
+    font-weight: 550;
+    margin: 0;
+}
+
+.practicalBlock + .responseText {
+    margin-top: 1.25rem;
 }
 
 /* Individual section block */
 .responseBlock {
-    background-color: #F9FAFB;
-    border: 1px solid #D1D5DB;
+    background-color: #FFFFFF;
+    border: 1px solid #D7DEE8;
     border-radius: 8px;
-    padding: 1.5rem 1.75rem;
+    padding: 1.35rem 1.6rem;
 }
 
 .blockLabel {
-    font-size: 0.75rem;
-    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.76rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #4B5563;
+    letter-spacing: 0.07em;
+    color: #334155;
     margin-bottom: 0.75rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.blockLabel::before {
+    content: "";
+    width: 3px;
+    height: 16px;
+    border-radius: 999px;
+    background: #475569;
 }
 
 .blockText {
-    font-size: 1.25rem;
-    line-height: 1.8;
+    font-size: 1.1rem;
+    line-height: 1.75;
     color: #1F2937;
     margin: 0;
 }
 
 /* Citation block variant — neutralized */
 .citaBlock {
-    background-color: #F9FAFB;
-    border-color: #D1D5DB;
+    background-color: #FFFFFF;
+    border-color: #D7DEE8;
 }
 
 .citaList {
@@ -689,6 +742,7 @@
 
 .citaLine {
     font-size: 0.95rem;
+    line-height: 1.55;
     color: #1F2937;
 }
 
