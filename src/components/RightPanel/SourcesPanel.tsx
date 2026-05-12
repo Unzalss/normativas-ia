@@ -161,7 +161,7 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                         </div>
 
                         <div className={styles.sourceListTitle}>
-                            Desglose de fuentes principales
+                            Fuentes normativas utilizadas
                         </div>
 
                         <div className={styles.sourceList}>
@@ -186,10 +186,7 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                     <div className={styles.sourceTitle}>{group.title}</div>
                                     <div className={styles.sourceMeta}>
                                         <span className={styles.groupOverviewCount}>
-                                            {group.isExpanded || group.visibleItems.length === group.totalItems
-                                                ? `${group.totalItems} fragmento${group.totalItems > 1 ? 's' : ''}`
-                                                : `${group.visibleItems.length} de ${group.totalItems} fragmentos`
-                                            }
+                                            {`${group.visibleItems.length} fuente${group.visibleItems.length > 1 ? 's' : ''} principal${group.visibleItems.length > 1 ? 'es' : ''} mostrada${group.visibleItems.length > 1 ? 's' : ''}`}
                                         </span>
                                     </div>
                                 </div>
@@ -272,7 +269,7 @@ export default function SourcesPanel({ query = '', sources, selectedSourceId, on
                                     className={styles.expandGroupButton}
                                     onClick={() => toggleGroup(group.key)}
                                 >
-                                    {group.isExpanded ? "Ocultar fragmentos adicionales" : `Ver ${group.totalItems - group.visibleItems.length} fragmentos adicionales en esta norma`}
+                                    {group.isExpanded ? "Ocultar fuentes adicionales" : "Ver más fuentes de esta norma"}
                                 </button>
                             )}
                         </div>
