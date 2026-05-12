@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import OpenAI from "openai";
 
 dotenv.config({ path: ".env.local", quiet: true });
 dotenv.config({ quiet: true });
@@ -11,6 +12,8 @@ const BOE_TEXT_URL = "https://www.boe.es/datosabiertos/api/legislacion-consolida
 const OUTPUT_DIR = path.join("tools", "output");
 const MAX_FRAGMENT_LENGTH = 8000;
 const SPLIT_TARGET_LENGTH = 7600;
+const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_BATCH_SIZE = 50;
 
 function getArg(name) {
   const args = process.argv.slice(2);
@@ -967,17 +970,126 @@ function printWritePlan({ normaPayload, partesPayloads, documentHash }) {
   console.log("[BOE][WRITE_PLAN] No se ha insertado, borrado ni generado embeddings.");
 }
 
+async function updateNormaIngestError(supabase, normaId, error) {
+  if (!normaId) return;
+  const message = String(error?.message || error || "Error desconocido").slice(0, 4000);
+  const { error: updateError } = await supabase
+    .from("normas")
+    .update({
+      estado_ingesta: "error",
+      error_ingesta: message,
+    })
+    .eq("id", normaId);
+
+  if (updateError) {
+    console.error(`[BOE][EXECUTE_UPLOAD] No se pudo marcar estado_ingesta=error: ${updateError.message}`);
+  }
+}
+
+async function executeUploadMode({ supabase, openai, preview, validation, normaPayload, partesPayloads, documentHash }) {
+  let normaId = null;
+  let insertedCount = 0;
+  let numEmbeddingsGenerados = 0;
+
+  console.log("\n[BOE][EXECUTE_UPLOAD] Iniciando subida real controlada");
+  console.log(`CÃ³digo: ${normaPayload.codigo}`);
+  console.log(`Document hash: ${documentHash}`);
+  console.log(`Fragmentos preparados: ${partesPayloads.length}`);
+
+  try {
+    const { data: insertedNorma, error: insertNormaError } = await supabase
+      .from("normas")
+      .insert(normaPayload)
+      .select("id")
+      .single();
+
+    if (insertNormaError) throw new Error(`Error insertando norma: ${insertNormaError.message}`);
+    if (!insertedNorma?.id) throw new Error("Supabase no devolviÃ³ id al insertar norma.");
+
+    normaId = insertedNorma.id;
+    console.log(`[BOE][EXECUTE_UPLOAD] Norma creada con id=${normaId}`);
+
+    for (let i = 0; i < partesPayloads.length; i += EMBEDDING_BATCH_SIZE) {
+      const batch = partesPayloads.slice(i, i + EMBEDDING_BATCH_SIZE);
+      const textsToVectorize = batch.map((fragment) => (
+        !fragment.es_indice && fragment.texto.length >= 20 ? fragment.texto : null
+      ));
+      const validTexts = textsToVectorize.filter((text) => text !== null);
+      let batchEmbeddings = [];
+      let embeddingIndex = 0;
+
+      if (validTexts.length > 0) {
+        console.log(`[BOE][EXECUTE_UPLOAD] Generando embeddings batch ${Math.floor(i / EMBEDDING_BATCH_SIZE) + 1} (${validTexts.length} textos)`);
+        const embeddingResponse = await openai.embeddings.create({
+          model: EMBEDDING_MODEL,
+          input: validTexts,
+          dimensions: 1536,
+        });
+        batchEmbeddings = embeddingResponse.data.map((item) => item.embedding);
+      }
+
+      const rowsToInsert = batch.map((fragment, index) => {
+        let embedding = null;
+        if (textsToVectorize[index] !== null && embeddingIndex < batchEmbeddings.length) {
+          embedding = batchEmbeddings[embeddingIndex++];
+          numEmbeddingsGenerados++;
+        }
+
+        return {
+          ...fragment,
+          norma_id: normaId,
+          orden: i + index + 1,
+          embedding,
+        };
+      });
+
+      const { error: insertPartesError } = await supabase
+        .from("normas_partes")
+        .insert(rowsToInsert);
+
+      if (insertPartesError) {
+        throw new Error(`Error insertando fragmentos desde ${i + 1}: ${insertPartesError.message}`);
+      }
+
+      insertedCount += rowsToInsert.length;
+    }
+
+    const stats = preview.stats || {};
+    const { error: updateError } = await supabase
+      .from("normas")
+      .update({
+        estado_ingesta: "lista",
+        num_fragmentos: insertedCount,
+        num_articulos_detectados: stats.articulos_detectados ?? validation.stats.articulos,
+        num_anexos_detectados: stats.anexos_detectados ?? validation.stats.anexos,
+        num_embeddings_generados: numEmbeddingsGenerados,
+        error_ingesta: null,
+      })
+      .eq("id", normaId);
+
+    if (updateError) throw new Error(`Error actualizando norma final: ${updateError.message}`);
+
+    console.log(`[BOE][EXECUTE_UPLOAD] Subida completada: norma_id=${normaId}, fragmentos=${insertedCount}, embeddings=${numEmbeddingsGenerados}`);
+  } catch (error) {
+    await updateNormaIngestError(supabase, normaId, error);
+    throw error;
+  }
+}
+
 async function confirmUploadPreflightMode(boeId) {
   const codigo = (getArg("codigo") || "").trim();
   const writePlan = hasFlag("write-plan");
+  const executeUpload = hasFlag("execute-upload");
   if (!codigo) {
     throw new Error("Falta argumento obligatorio --codigo para el preflight de publicación.");
   }
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
   if (!supabaseUrl) throw new Error("Falta variable SUPABASE_URL.");
   if (!supabaseKey) throw new Error("Falta variable SUPABASE_SERVICE_ROLE_KEY.");
+  if (executeUpload && !openaiKey) throw new Error("Falta variable OPENAI_API_KEY para --execute-upload.");
 
   const { outputPath, preview } = await readPreviewJson(boeId);
   const validation = validatePreviewShape(preview, boeId);
@@ -1017,11 +1129,30 @@ async function confirmUploadPreflightMode(boeId) {
   console.log(`Fragmento máximo: ${stats.fragmento_mas_largo ?? validation.stats.maxLength} caracteres`);
   printDuplicateSummary(duplicateGroups);
   console.log(`Acción futura recomendada: ${action}`);
-  console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
+  if (executeUpload) {
+    console.log("[BOE][PRE_FLIGHT] Validado para ejecuciÃ³n real solicitada con --confirm-upload --execute-upload.");
+  } else {
+    console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
+  }
 
   if (hasDuplicates) {
     console.log("Acción: ABORTAR_DUPLICADO");
     process.exitCode = 1;
+    return;
+  }
+
+  if (executeUpload) {
+    const normaPayload = buildNormaPayload({ preview, codigo, documentHash });
+    const partesPayloads = buildNormasPartesPayloads({ preview, normaPayload });
+    await executeUploadMode({
+      supabase,
+      openai: new OpenAI({ apiKey: openaiKey }),
+      preview,
+      validation,
+      normaPayload,
+      partesPayloads,
+      documentHash,
+    });
     return;
   }
 
