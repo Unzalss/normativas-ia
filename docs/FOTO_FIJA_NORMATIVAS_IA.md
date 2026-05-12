@@ -2225,4 +2225,46 @@ tools/delete-test-boe-486.mjs
 Estado final:
 El sistema BOE ya puede publicar normas reales de forma controlada.
 
+# 54. BLOQUE COMPLETADO — REINGESTA LIMPIA DE RD-505-2007 DESDE BOE
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Se ha reingestado correctamente la norma RD-505-2007 usando el sistema BOE definitivo.
+
+Norma:
+- RD-505-2007
+- BOE-A-2007-9607
+- Real Decreto 505/2007, condiciones básicas de accesibilidad y no discriminación
+
+Proceso realizado:
+- dry-run desde BOE correcto
+- validate-preview correcto
+- detección de duplicado antiguo correcta
+- borrado seguro de norma antigua id=27
+- reingesta limpia desde BOE
+- embeddings generados correctamente
+- validación en producción
+
+Resultado:
+- nueva norma creada con id=31
+- 32 fragmentos insertados
+- 32 embeddings generados
+- estado_ingesta = lista
+
+Consultas validadas:
+- ¿Qué dice el artículo 1 del RD-505-2007?
+- ¿Qué condiciones básicas de accesibilidad establece el RD-505-2007?
+
+Resultado funcional:
+- artículo exacto correcto
+- consulta general correcta
+- fuentes correctas
+- sin mezcla de normas
+
+Script auxiliar creado:
+tools/delete-rd-505-2007.mjs
+
+Conclusión:
+RD-505-2007 queda limpia, validada y disponible en producción desde la nueva vía BOE.
+
 # FIN DE FOTO FIJA
