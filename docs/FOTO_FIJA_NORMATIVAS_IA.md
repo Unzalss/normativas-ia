@@ -2180,4 +2180,49 @@ BOE → preview JSON → validate-preview → preflight Supabase → write-plan 
 Siguiente fase:
 activar ejecución real controlada con embeddings e inserción en Supabase.
 
+# 53. BLOQUE COMPLETADO — PUBLICACIÓN REAL CONTROLADA DESDE BOE
+
+Estado: COMPLETADO Y VALIDADO
+
+Se ha activado y probado la subida real controlada desde el importador BOE.
+
+Archivo:
+tools/import-boe-norma.mjs
+
+Nuevo modo:
+--confirm-upload --execute-upload
+
+Validado:
+- no escribe sin confirmación doble
+- detecta duplicados antes de subir
+- inserta norma nueva
+- genera embeddings
+- inserta fragmentos en normas_partes
+- actualiza estado_ingesta = lista
+- bloquea duplicados después de subir
+- funciona en el buscador de producción
+
+Prueba realizada:
+- BOE-A-1997-8669
+- código temporal: TEST-BOE-486
+- norma creada: id=29
+- fragmentos: 38
+- embeddings: 38
+
+Consultas validadas:
+- ¿Qué dice el artículo 7 del TEST-BOE-486?
+- ¿Qué temperatura deben tener los locales de trabajo cerrados?
+
+Resultado:
+- recuperación correcta
+- fuentes correctas
+- respuesta correcta
+- norma de prueba borrada correctamente después
+
+Script auxiliar creado:
+tools/delete-test-boe-486.mjs
+
+Estado final:
+El sistema BOE ya puede publicar normas reales de forma controlada.
+
 # FIN DE FOTO FIJA
