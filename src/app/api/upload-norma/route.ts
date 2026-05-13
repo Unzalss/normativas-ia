@@ -2,12 +2,17 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { AdminAuthError, requireAdmin } from '@/lib/auth/admin';
 import { extractTextFromUploadedFile, parseNormaJuridica } from '@/lib/normativas/parser';
 import { processNormaPipeline } from '@/lib/normativas/ingest';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Timeout de Vercel extendido (min 60s)
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : "Error interno del servidor";
+}
 
 function parseSpanishDateToISO(text: string): string | null {
     const months: Record<string, string> = {
@@ -28,8 +33,16 @@ function parseSpanishDateToISO(text: string): string | null {
 export async function POST(req: Request) {
     try {
         const supabaseUrl = process.env.SUPABASE_URL!;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        const authHeader = req.headers.get("Authorization");
+        const authSupabase = createClient(
+            supabaseUrl,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            { global: { headers: { Authorization: authHeader || "" } } }
+        );
+
+        await requireAdmin(req, authSupabase);
+
+        const supabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
         const formData = await req.formData();
         const file = formData.get("file") as File | null;
@@ -137,7 +150,7 @@ export async function POST(req: Request) {
 
         // --- INGESTIÓN PIPELINE ---
         try {
-            const rawText = await extractTextFromUploadedFile(file, (file as any).name);
+            const rawText = await extractTextFromUploadedFile(file, file.name);
 
             // --- AUTO Detección Metadata Básica ---
             const textIntro = rawText.substring(0, 2000);
@@ -191,7 +204,7 @@ Materias posibles:
                         temperature: 0,
                     });
 
-                    const result = JSON.parse(completion.choices[0].message.content || "{}");
+                    const result = JSON.parse(completion.choices[0].message.content || "{}") as Record<string, unknown>;
                     if (!detectedMateria && result.materia) detectedMateria = String(result.materia).toLowerCase();
                     if (!detectedSubmateria && result.submateria) detectedSubmateria = String(result.submateria).toLowerCase();
                 } catch (e) {
@@ -199,18 +212,18 @@ Materias posibles:
                 }
             }
 
-            let detectedKeywords = keywords;
+            let detectedKeywords: string | string[] | null = keywords;
             if (!detectedKeywords) {
                 const generatedKeywords = [
                     detectedMateria,
                     detectedSubmateria,
                     ...(titulo ? titulo.toLowerCase().split(/[\s,.;:!?()¿¡'"\-]+/).filter(w => w.length > 4) : [])
-                ].filter(Boolean);
+                ].filter((keyword): keyword is string => Boolean(keyword));
 
                 // Supabase is expecting a string[] for keywords? Wait, FOTO FIJA says: `keywords` (TEXT[])
                 // We'll pass it as a JS array and the Supabase client will handle the PgArray serialization.
                 if (generatedKeywords.length > 0) {
-                    detectedKeywords = Array.from(new Set(generatedKeywords)) as any;
+                    detectedKeywords = Array.from(new Set(generatedKeywords));
                 }
             }
 
@@ -247,11 +260,12 @@ Materias posibles:
 
             await processNormaPipeline(insertedNorma.id, fragments, metadataProxy);
 
-        } catch (pipelineError: any) {
+        } catch (pipelineError: unknown) {
+            const pipelineErrorMessage = getErrorMessage(pipelineError);
             console.error("Pipeline failure:", pipelineError);
             await supabase.from('normas').update({
                 estado_ingesta: 'error',
-                error_ingesta: pipelineError.message || "Error desconocido en ingestión / parsing"
+                error_ingesta: pipelineErrorMessage
             }).eq('id', insertedNorma.id);
             throw pipelineError;
         }
@@ -262,8 +276,12 @@ Materias posibles:
             message: "Norma registrada, parseada e indexada correctamente con sus vectores."
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        if (error instanceof AdminAuthError) {
+            return NextResponse.json({ error: error.message }, { status: error.status });
+        }
+
         console.error("Upload API Error:", error);
-        return NextResponse.json({ error: error.message || "Error interno del servidor" }, { status: 500 });
+        return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

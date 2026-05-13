@@ -1,13 +1,54 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
+type UploadResult = Record<string, unknown> | null;
+type SimilarMatch = {
+    id: number | string;
+    codigo?: string;
+    titulo?: string;
+};
+
 export default function SubirNormaPage() {
+    const router = useRouter();
+    const [authStatus, setAuthStatus] = useState<'checking' | 'authorized' | 'denied'>('checking');
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error' | 'duplicated' | 'duplicated_hash' | 'similar_warning'>('idle');
-    const [result, setResult] = useState<any>(null);
+    const [result, setResult] = useState<UploadResult>(null);
     const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
-    const [similarMatches, setSimilarMatches] = useState<any[]>([]);
+    const [similarMatches, setSimilarMatches] = useState<SimilarMatch[]>([]);
+
+    const supabase = useMemo(
+        () =>
+            createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            ),
+        []
+    );
+
+    useEffect(() => {
+        async function checkAdmin() {
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+
+            if (!user) {
+                router.replace('/login?next=/subir-norma');
+                return;
+            }
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .single();
+
+            setAuthStatus(profile?.role === 'admin' ? 'authorized' : 'denied');
+        }
+
+        checkAdmin();
+    }, [router, supabase]);
 
     // Core upload logic — shared by normal submit and "Subir igualmente" confirmation
     const doUpload = async (formData: FormData) => {
@@ -21,19 +62,12 @@ export default function SubirNormaPage() {
                 throw new Error("Debes seleccionar un archivo.");
             }
 
-            const supabase = createClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-            );
-
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
-            /* --- AUTH DESACTIVADA TEMPORALMENTE ---
             if (!token) {
                 throw new Error("No estás autenticado. Debes iniciar sesión primero.");
             }
-            */
 
             const headers: Record<string, string> = {};
             if (token) {
@@ -64,10 +98,10 @@ export default function SubirNormaPage() {
 
             setStatus('success');
             setResult(json);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('[doUpload] Error al enviar norma:', error);
             setStatus('error');
-            setResult({ error: error.message });
+            setResult({ error: error instanceof Error ? error.message : "Error al enviar norma" });
         }
     };
 
@@ -116,6 +150,23 @@ export default function SubirNormaPage() {
         setPendingFormData(null);
         setSimilarMatches([]);
     };
+
+    if (authStatus === 'checking') {
+        return (
+            <div style={{ maxWidth: '600px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+                Comprobando permisos...
+            </div>
+        );
+    }
+
+    if (authStatus === 'denied') {
+        return (
+            <div style={{ maxWidth: '600px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+                <h1>Sin permisos de administración</h1>
+                <p>Esta pantalla solo está disponible para usuarios administradores.</p>
+            </div>
+        );
+    }
 
     return (
         <div style={{ maxWidth: '600px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>

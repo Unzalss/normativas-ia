@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 type NormaAdminRow = {
@@ -63,6 +64,7 @@ function StatusBadge({ value }: { value: string | null }) {
 }
 
 export default function NormasCargadasAdminPage() {
+    const router = useRouter();
     const [rows, setRows] = useState<NormaAdminRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export default function NormasCargadasAdminPage() {
 
                 if (!token) {
                     setRows([]);
-                    setError("Debes iniciar sesión con un usuario administrador.");
+                    router.replace("/login?next=/admin/normas-cargadas");
                     return;
                 }
 
@@ -97,6 +99,12 @@ export default function NormasCargadasAdminPage() {
                     },
                 });
                 const json = await res.json();
+
+                if (res.status === 403) {
+                    setRows([]);
+                    setError("Acceso denegado. Sin permisos de administración.");
+                    return;
+                }
 
                 if (!res.ok || !json.ok) {
                     throw new Error(json.error || "No se pudieron cargar las normas.");
@@ -112,7 +120,7 @@ export default function NormasCargadasAdminPage() {
         }
 
         fetchNormas();
-    }, [supabase]);
+    }, [router, supabase]);
 
     return (
         <main style={{ minHeight: "100vh", padding: "32px", background: "var(--bg-app)" }}>

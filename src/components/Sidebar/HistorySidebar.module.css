@@ -159,6 +159,34 @@
     transition: background-color 0.2s;
 }
 
+.adminActions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.logoutButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.45rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.logoutButton:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+    color: var(--primary-color);
+}
+
 .userCard:hover {
     background-color: rgba(0, 0, 0, 0.03);
 }
