@@ -2267,4 +2267,318 @@ tools/delete-rd-505-2007.mjs
 Conclusión:
 RD-505-2007 queda limpia, validada y disponible en producción desde la nueva vía BOE.
 
+# 55. BLOQUE COMPLETADO — MEJORA DE PANTALLA INICIAL DEL BUSCADOR
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Se ha mejorado la pantalla inicial del buscador para orientar mejor el producto hacia arquitectura y normativa técnica.
+
+Archivo modificado:
+src/components/Main/QueryPanel.tsx
+
+Cambios realizados:
+- título principal actualizado
+- subtítulo orientado a CTE, incendios, accesibilidad, seguridad de uso y prevención
+- placeholder del buscador más concreto
+- ejemplos de consulta actualizados con normas reales ya validadas
+
+Ejemplos visibles:
+- ¿Qué dice el artículo 7 del RD-486-1997?
+- ¿Qué temperatura deben tener los locales de trabajo cerrados?
+- ¿Qué condiciones básicas de accesibilidad establece el RD-505-2007?
+- ¿Cada cuánto deben revisarse los extintores?
+
+Validado en producción:
+- pantalla inicial correcta
+- ejemplo RD-486-1997 funciona
+- ejemplo RD-505-2007 funciona
+
+No se ha tocado:
+- backend
+- /api/ask
+- Supabase
+- SQL
+- RPC
+- lógica de búsqueda
+
+Conclusión:
+La home del buscador queda mejor orientada al usuario profesional de arquitectura y normativa técnica.
+
+# 56. BLOQUE COMPLETADO — MEJORA VISUAL DE RESPUESTA CON CRITERIO PRÁCTICO
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Se ha mejorado la pantalla de respuesta para que sea más útil para arquitectos y técnicos.
+
+Archivos modificados:
+- src/components/Main/QueryPanel.tsx
+- src/components/Main/QueryPanel.module.css
+
+Cambios realizados:
+- añadido bloque superior "Criterio práctico"
+- el criterio práctico destaca la parte accionable de la respuesta
+- se mantienen los bloques:
+  - Respuesta breve
+  - Fundamento normativo
+  - Fuentes citadas
+- títulos de secciones mejorados visualmente
+- presentación más profesional
+
+Validado en producción con:
+¿Qué temperatura deben tener los locales de trabajo cerrados según el RD-486-1997?
+
+Resultado:
+- respuesta más clara
+- mejor orientación a decisión técnica
+- fuentes siguen funcionando
+- no se ha tocado backend ni lógica de búsqueda
+
+Conclusión:
+La pantalla de respuesta queda más profesional y útil para el usuario técnico.
+
+# 57. BLOQUE COMPLETADO — MEJORA DE TEXTOS DEL PANEL DE FUENTES
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN
+
+Se ha mejorado el panel derecho de fuentes para que sea más claro y profesional.
+
+Archivo modificado:
+src/components/RightPanel/SourcesPanel.tsx
+
+Cambios realizados:
+- "Desglose de fuentes principales" pasa a "Fuentes normativas utilizadas"
+- los contadores tipo "2 de 8 fragmentos" pasan a "2 fuentes principales mostradas"
+- "Ver X fragmentos adicionales en esta norma" pasa a "Ver más fuentes de esta norma"
+- estado expandido ajustado a "Ocultar fuentes adicionales"
+
+Validado en producción con:
+¿Qué temperatura deben tener los locales de trabajo cerrados según el RD-486-1997?
+
+Resultado:
+- panel más claro
+- lenguaje menos técnico
+- fuentes siguen funcionando correctamente
+- no se ha tocado backend ni lógica de búsqueda
+
+Conclusión:
+El panel de fuentes queda más orientado a usuario profesional y menos a detalle técnico interno.
+
+# 58. BLOQUE COMPLETADO — LIMPIEZA Y AMPLIACIÓN DE CORPUS NORMATIVO
+
+Estado: COMPLETADO Y VALIDADO EN PRODUCCIÓN  
+Fecha: 2026-05-13
+
+Se ha realizado una fase de limpieza y ampliación de normas desde BOE, sin tocar código, backend, frontend, SQL de búsqueda ni `/api/ask`.
+
+## Normas revisadas y validadas
+
+### RD-486-1997 — Lugares de trabajo
+
+Estado: LIMPIO Y VALIDADO
+
+Resultado:
+- norma existente limpia en Supabase
+- `normas.id = 30`
+- 38 fragmentos
+- 38 embeddings
+
+Pruebas superadas:
+- ¿Qué dice el artículo 7 del RD-486-1997? → OK
+- ¿Qué temperatura deben tener los locales de trabajo cerrados según el RD-486-1997? → OK, fuente ANEXO III
+- ¿Qué dice el RD-486-1997 sobre piscinas públicas? → No consta correctamente
+
+Conclusión:
+RD-486-1997 queda validado como norma limpia y funcional.
+
+---
+
+### RD-513-2017 — RIPCI
+
+Estado: REIMPORTADO LIMPIO DESDE BOE Y VALIDADO
+
+Situación anterior:
+- existía una versión antigua con `normas.id = 28`
+- tenía 77 fragmentos
+- se decidió sustituirla por versión BOE estructurada
+
+Acción realizada:
+- se borró la versión antigua:
+  - `normas_partes` de `norma_id = 28`
+  - `normas.id = 28`
+- se reimportó desde BOE-A-2017-6606
+
+Resultado:
+- nueva norma creada con `normas.id = 32`
+- 126 fragmentos
+- 126 embeddings
+- estado_ingesta = lista
+
+Pruebas superadas:
+- ¿Qué dice el artículo 22 del RD-513-2017 sobre inspecciones periódicas? → OK, fuente Artículo 22
+- ¿Cada cuánto deben revisarse los extintores según el RD-513-2017? → OK
+- ¿Qué dice el RD-513-2017 sobre piscinas públicas? → No consta correctamente
+
+Observación:
+- en la consulta de extintores recupera bien la fuente principal, pero también aparecen algunas fuentes secundarias menos relevantes.
+- no bloquea el uso actual.
+- queda como mejora futura de ranking/fuentes.
+
+Conclusión:
+RIPCI queda limpio, reimportado y validado desde BOE.
+
+---
+
+### RD-505-2007 — Accesibilidad
+
+Estado: YA LIMPIO Y REVALIDADO
+
+Resultado:
+- `normas.id = 31`
+- versión BOE limpia ya existente
+- se revalidó en producción
+
+Pruebas superadas:
+- ¿Qué dice el artículo 1 del RD-505-2007? → OK
+- ¿Qué condiciones básicas de accesibilidad establece el RD-505-2007? → OK
+- ¿Qué dice el RD-505-2007 sobre extintores? → No consta correctamente
+
+Conclusión:
+RD-505-2007 sigue limpio y validado.
+
+---
+
+### RD-2267-2004 — RSCIEI antiguo
+
+Estado: NO SUBIDO
+
+Se generó preview desde BOE-A-2004-21216 y el propio BOE indicó:
+
+- norma derogada con efectos desde el 10 de mayo de 2025
+- derogada por Real Decreto 164/2025
+
+Decisión:
+- no subir RD-2267-2004 como norma vigente
+- no usarla como base principal del buscador
+
+Conclusión:
+RD-2267-2004 queda descartado para corpus vigente principal.
+
+---
+
+### RD-164-2025 — Nuevo RSCIEI vigente
+
+Estado: SUBIDO Y VALIDADO
+
+Norma:
+- Real Decreto 164/2025, de 4 de marzo
+- Reglamento de seguridad contra incendios en establecimientos industriales
+- BOE-A-2025-7190
+
+Resultado:
+- nueva norma creada con `normas.id = 33`
+- 219 fragmentos
+- 219 embeddings
+- estado_ingesta = lista
+
+Pruebas superadas:
+- ¿Qué dice el artículo 1 del RD-164-2025? → OK
+- ¿Qué regula el RD-164-2025 sobre establecimientos industriales? → OK
+- ¿Qué dice el RD-164-2025 sobre piscinas públicas? → No consta correctamente
+
+Conclusión:
+RD-164-2025 queda incorporado como nuevo RSCIEI vigente.
+
+---
+
+## Revalidación tras nuevas cargas
+
+Después de las nuevas importaciones se comprobó que siguen funcionando:
+
+### CTE DB-SI
+
+Consulta:
+- ¿Qué dice el CTE DB-SI sobre ocupación en locales de pública concurrencia?
+
+Resultado:
+- OK
+- fuente correcta CTE-DB-SI
+- no se estropeó tras las nuevas normas
+
+### CTE DB-SUA
+
+Consulta:
+- ¿Qué clase de resbaladicidad debe tener un suelo interior seco según el CTE DB-SUA?
+
+Resultado:
+- OK
+- fuente correcta CTE-DB-SUA
+- no se estropeó tras las nuevas normas
+
+---
+
+## Estado Git
+
+No hubo cambios de código.
+
+Se generaron previews temporales en:
+
+- tools/output/boe-preview-BOE-A-2004-21216.json
+- tools/output/boe-preview-BOE-A-2025-7190.json
+
+Se eliminaron después.
+
+Estado final:
+
+- working tree clean
+- nada que commitear
+- nada que pushear
+
+---
+
+# 59. ESTADO ACTUAL DEL CORPUS VALIDADO
+
+Normas limpias y validadas actualmente:
+
+- RD-486-1997 — lugares de trabajo — `id=30`
+- RD-505-2007 — accesibilidad — `id=31`
+- RD-513-2017 — RIPCI — `id=32`
+- RD-164-2025 — RSCIEI vigente — `id=33`
+- CTE DB-SI — validado en consulta de ocupación / pública concurrencia
+- CTE DB-SUA — validado en consulta de resbaladicidad
+
+Norma descartada como vigente:
+
+- RD-2267-2004 — RSCIEI antiguo — derogado desde 2025-05-10
+
+Conclusión:
+El corpus base del MVP queda más limpio, actualizado y profesional.
+
+---
+
+# 60. SIGUIENTE FASE RECOMENDADA
+
+Fase activa:
+
+AMPLIAR CORPUS NORMATIVO CON CONTROL MANUAL
+
+Regla de trabajo:
+
+- subir una norma cada vez
+- validar preview
+- comprobar duplicados
+- publicar solo si procede
+- hacer 3 pruebas mínimas:
+  1. artículo exacto
+  2. pregunta práctica real
+  3. pregunta de “No consta”
+- no tocar `/api/ask` salvo fallo claro
+- no tocar frontend salvo necesidad
+- no subir normas derogadas como vigentes
+
+Prioridad siguiente:
+
+1. ampliar normativa técnica útil
+2. mantener corpus limpio
+3. validar cada norma antes de pasar a la siguiente
+
 # FIN DE FOTO FIJA
