@@ -1,6 +1,6 @@
 "use client";
 
-import React, { FormEvent, Suspense, useMemo, useState } from "react";
+import React, { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
@@ -24,6 +24,33 @@ function LoginForm() {
         []
     );
 
+    const checkAdminAndRedirect = useCallback(async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
+
+        if (!user) return false;
+
+        const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+
+        if (profileError || profile?.role !== "admin") {
+            await supabase.auth.signOut();
+            setMessage("Sin permisos de administración.");
+            return false;
+        }
+
+        router.push(nextPath);
+        router.refresh();
+        return true;
+    }, [nextPath, router, supabase]);
+
+    useEffect(() => {
+        checkAdminAndRedirect();
+    }, [checkAdminAndRedirect]);
+
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setIsLoading(true);
@@ -40,23 +67,27 @@ function LoginForm() {
                 throw new Error(signInError?.message || "No se pudo iniciar sesión.");
             }
 
-            const { data: profile, error: profileError } = await supabase
-                .from("profiles")
-                .select("role")
-                .eq("id", data.user.id)
-                .single();
-
-            if (profileError || profile?.role !== "admin") {
-                await supabase.auth.signOut();
-                setMessage("Sin permisos de administración.");
-                return;
-            }
-
-            router.push(nextPath);
-            router.refresh();
+            await checkAdminAndRedirect();
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "No se pudo iniciar sesión.");
         } finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function handleGoogleLogin() {
+        setIsLoading(true);
+        setError(null);
+        setMessage(null);
+
+        const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`;
+        const { error: oauthError } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo },
+        });
+
+        if (oauthError) {
+            setError(oauthError.message);
             setIsLoading(false);
         }
     }
@@ -80,6 +111,26 @@ function LoginForm() {
             <p style={{ color: "var(--text-secondary)", fontSize: 15, marginBottom: 22 }}>
                 Inicia sesión con tu cuenta administradora.
             </p>
+
+            <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
+                <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={handleGoogleLogin}
+                    style={{
+                        minHeight: 42,
+                        border: "1px solid var(--border-color)",
+                        borderRadius: 6,
+                        background: "white",
+                        color: "var(--primary-color)",
+                        fontWeight: 700,
+                        cursor: isLoading ? "default" : "pointer",
+                        opacity: isLoading ? 0.7 : 1,
+                    }}
+                >
+                    Entrar con Google
+                </button>
+            </div>
 
             <form onSubmit={handleSubmit} style={{ display: "grid", gap: 14 }}>
                 <label style={{ display: "grid", gap: 6, fontSize: 14, fontWeight: 700 }}>

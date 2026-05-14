@@ -2581,4 +2581,41 @@ Prioridad siguiente:
 2. mantener corpus limpio
 3. validar cada norma antes de pasar a la siguiente
 
+# 61. BLOQUE COMPLETADO — ZONA ADMIN DE NORMAS CARGADAS
+
+Estado: COMPLETADO Y DESPLEGADO  
+Fecha: 2026-05-13
+
+Se ha creado una zona admin para controlar las normas cargadas.
+
+Ruta:
+- /admin/normas-cargadas
+
+Cambios realizados:
+- nueva API protegida: /api/admin/normas
+- nueva pantalla admin: /admin/normas-cargadas
+- login admin: /login
+- protección de /subir-norma
+- protección de /api/upload-norma con requireAdmin
+- enlace admin desde sidebar cuando el usuario es admin
+- botón “Volver al buscador”
+- tabla con buscador y filtros
+- columnas: código, título, estado_ingesta, fragmentos, artículos, anexos, materia, ámbito, jurisdicción, fechas, estado y notas
+
+Seguridad:
+- la pantalla /admin/normas-cargadas requiere sesión admin
+- la API /api/admin/normas requiere token válido y role=admin
+- alguien con solo la URL no puede ver los datos
+- /api/upload-norma ya no queda abierta sin control admin
+
+Commits:
+- d53e375 — Add admin normas list
+- f78d4a0 — Add admin login and protect norma upload
+- 8ba9bdc — Improve admin normas list
+
+Pendiente:
+- rellenar metadata materia/ámbito de normas BOE ya cargadas
+- añadir campo de validación manual más adelante
+- decidir si mantener login por contraseña o añadir login con Google
+
 # FIN DE FOTO FIJA
