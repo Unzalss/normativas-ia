@@ -35,6 +35,9 @@ export async function GET(req: Request) {
                 fecha_ingesta,
                 fecha_publicacion,
                 estado,
+                materia,
+                ambito,
+                jurisdiccion,
                 error_ingesta
             `)
             .order("fecha_ingesta", { ascending: false, nullsFirst: false })
