@@ -19,10 +19,19 @@ type NormaAdminRow = {
     materia: string | null;
     ambito: string | null;
     jurisdiccion: string | null;
+    validada: boolean;
+    fecha_validacion: string | null;
+    notas_admin: string | null;
     error_ingesta: string | null;
 };
 
 type FilterKey = "estado_ingesta" | "estado" | "materia" | "ambito";
+type DraftRow = {
+    validada: boolean;
+    notas_admin: string;
+    isSaving: boolean;
+    error: string | null;
+};
 
 function formatDate(value: string | null): string {
     if (!value) return "-";
@@ -75,6 +84,7 @@ export default function NormasCargadasAdminPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
+    const [drafts, setDrafts] = useState<Record<number, DraftRow>>({});
     const [filters, setFilters] = useState<Record<FilterKey, string>>({
         estado_ingesta: "",
         estado: "",
@@ -123,7 +133,9 @@ export default function NormasCargadasAdminPage() {
                     throw new Error(json.error || "No se pudieron cargar las normas.");
                 }
 
-                setRows(Array.isArray(json.data) ? json.data : []);
+                const fetchedRows = Array.isArray(json.data) ? json.data : [];
+                setRows(fetchedRows);
+                setDrafts(buildDrafts(fetchedRows));
             } catch (err: unknown) {
                 setRows([]);
                 setError(err instanceof Error ? err.message : "No se pudieron cargar las normas.");
@@ -165,6 +177,72 @@ export default function NormasCargadasAdminPage() {
 
     function updateFilter(key: FilterKey, value: string) {
         setFilters((current) => ({ ...current, [key]: value }));
+    }
+
+    function updateDraft(id: number, patch: Partial<DraftRow>) {
+        setDrafts((current) => ({
+            ...current,
+            [id]: {
+                ...current[id],
+                ...patch,
+            },
+        }));
+    }
+
+    async function saveRow(row: NormaAdminRow) {
+        const draft = drafts[row.id];
+        if (!draft) return;
+
+        updateDraft(row.id, { isSaving: true, error: null });
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            if (!token) {
+                router.replace("/login?next=/admin/normas-cargadas");
+                return;
+            }
+
+            const res = await fetch("/api/admin/normas", {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    id: row.id,
+                    validada: draft.validada,
+                    notas_admin: draft.notas_admin.trim() ? draft.notas_admin : null,
+                }),
+            });
+            const json = await res.json();
+
+            if (res.status === 403) {
+                throw new Error("Acceso denegado. Sin permisos de administración.");
+            }
+
+            if (!res.ok || !json.ok) {
+                throw new Error(json.error || "No se pudo guardar la norma.");
+            }
+
+            const updatedRow = json.data as NormaAdminRow;
+            setRows((current) => current.map((item) => item.id === updatedRow.id ? updatedRow : item));
+            setDrafts((current) => ({
+                ...current,
+                [updatedRow.id]: {
+                    validada: updatedRow.validada,
+                    notas_admin: updatedRow.notas_admin || "",
+                    isSaving: false,
+                    error: null,
+                },
+            }));
+        } catch (err: unknown) {
+            updateDraft(row.id, {
+                isSaving: false,
+                error: err instanceof Error ? err.message : "No se pudo guardar la norma.",
+            });
+        }
     }
 
     return (
@@ -253,6 +331,8 @@ export default function NormasCargadasAdminPage() {
                                         "Materia",
                                         "Ámbito",
                                         "Jurisdicción",
+                                        "Validada",
+                                        "Notas admin",
                                         "Fecha publicación",
                                         "Fecha ingesta",
                                         "Estado",
@@ -267,7 +347,7 @@ export default function NormasCargadasAdminPage() {
                             <tbody>
                                 {!isLoading && filteredRows.length === 0 && !error && (
                                     <tr>
-                                        <td colSpan={13} style={{ padding: 24, color: "var(--text-secondary)", textAlign: "center" }}>
+                                        <td colSpan={15} style={{ padding: 24, color: "var(--text-secondary)", textAlign: "center" }}>
                                             No hay normas que coincidan con los filtros.
                                         </td>
                                     </tr>
@@ -290,10 +370,43 @@ export default function NormasCargadasAdminPage() {
                                         <td style={{ ...cellStyle, width: columnWidths[6] }}>{row.materia || "-"}</td>
                                         <td style={{ ...cellStyle, width: columnWidths[7] }}>{row.ambito || "-"}</td>
                                         <td style={{ ...cellStyle, width: columnWidths[8] }}>{row.jurisdiccion || "-"}</td>
-                                        <td style={{ ...cellStyle, width: columnWidths[9] }}>{formatDate(row.fecha_publicacion)}</td>
-                                        <td style={{ ...cellStyle, width: columnWidths[10] }}>{formatDate(row.fecha_ingesta)}</td>
-                                        <td style={{ ...cellStyle, width: columnWidths[11] }}>{row.estado || "-"}</td>
-                                        <td style={{ ...cellStyle, width: columnWidths[12], color: row.error_ingesta ? "#991b1b" : "var(--text-secondary)" }}>
+                                        <td style={{ ...cellStyle, width: columnWidths[9] }}>
+                                            <label style={checkboxLabelStyle}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={drafts[row.id]?.validada ?? row.validada}
+                                                    onChange={(event) => updateDraft(row.id, { validada: event.target.checked, error: null })}
+                                                />
+                                                <span>{(drafts[row.id]?.validada ?? row.validada) ? "Sí" : "No"}</span>
+                                            </label>
+                                            {row.fecha_validacion && (
+                                                <span style={validationDateStyle}>{formatDate(row.fecha_validacion)}</span>
+                                            )}
+                                        </td>
+                                        <td style={{ ...cellStyle, width: columnWidths[10] }}>
+                                            <textarea
+                                                value={drafts[row.id]?.notas_admin ?? row.notas_admin ?? ""}
+                                                onChange={(event) => updateDraft(row.id, { notas_admin: event.target.value, error: null })}
+                                                rows={3}
+                                                style={notesInputStyle}
+                                                placeholder="Notas internas..."
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => saveRow(row)}
+                                                disabled={drafts[row.id]?.isSaving}
+                                                style={saveButtonStyle}
+                                            >
+                                                {drafts[row.id]?.isSaving ? "Guardando..." : "Guardar"}
+                                            </button>
+                                            {drafts[row.id]?.error && (
+                                                <span style={rowErrorStyle}>{drafts[row.id].error}</span>
+                                            )}
+                                        </td>
+                                        <td style={{ ...cellStyle, width: columnWidths[11] }}>{formatDate(row.fecha_publicacion)}</td>
+                                        <td style={{ ...cellStyle, width: columnWidths[12] }}>{formatDate(row.fecha_ingesta)}</td>
+                                        <td style={{ ...cellStyle, width: columnWidths[13] }}>{row.estado || "-"}</td>
+                                        <td style={{ ...cellStyle, width: columnWidths[14], color: row.error_ingesta ? "#991b1b" : "var(--text-secondary)" }}>
                                             <span style={longTextStyle}>{row.error_ingesta || "Sin incidencias"}</span>
                                         </td>
                                     </tr>
@@ -305,6 +418,18 @@ export default function NormasCargadasAdminPage() {
             </section>
         </main>
     );
+}
+
+function buildDrafts(rows: NormaAdminRow[]): Record<number, DraftRow> {
+    return rows.reduce<Record<number, DraftRow>>((acc, row) => {
+        acc[row.id] = {
+            validada: row.validada,
+            notas_admin: row.notas_admin || "",
+            isSaving: false,
+            error: null,
+        };
+        return acc;
+    }, {});
 }
 
 function FilterSelect({
@@ -333,7 +458,7 @@ function FilterSelect({
     );
 }
 
-const columnWidths = [150, 360, 140, 100, 100, 90, 150, 140, 140, 140, 140, 110, 320];
+const columnWidths = [150, 360, 140, 100, 100, 90, 150, 140, 140, 130, 300, 140, 140, 110, 320];
 
 const pageHeaderStyle: React.CSSProperties = {
     display: "flex",
@@ -443,4 +568,49 @@ const longTextStyle: React.CSSProperties = {
 const strongWrapStyle: React.CSSProperties = {
     ...longTextStyle,
     color: "var(--primary-color)",
+};
+
+const checkboxLabelStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    fontWeight: 700,
+};
+
+const validationDateStyle: React.CSSProperties = {
+    display: "block",
+    marginTop: 6,
+    color: "var(--text-secondary)",
+    fontSize: 12,
+};
+
+const notesInputStyle: React.CSSProperties = {
+    width: "100%",
+    minHeight: 72,
+    resize: "vertical",
+    border: "1px solid var(--border-color)",
+    borderRadius: 6,
+    padding: "8px 9px",
+    font: "inherit",
+    color: "var(--text-primary)",
+};
+
+const saveButtonStyle: React.CSSProperties = {
+    marginTop: 8,
+    minHeight: 32,
+    padding: "6px 10px",
+    border: "none",
+    borderRadius: 6,
+    background: "var(--primary-color)",
+    color: "white",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+};
+
+const rowErrorStyle: React.CSSProperties = {
+    display: "block",
+    marginTop: 6,
+    color: "#991b1b",
+    fontSize: 12,
 };
