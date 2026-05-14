@@ -75,23 +75,6 @@ function LoginForm() {
         }
     }
 
-    async function handleGoogleLogin() {
-        setIsLoading(true);
-        setError(null);
-        setMessage(null);
-
-        const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(nextPath)}`;
-        const { error: oauthError } = await supabase.auth.signInWithOAuth({
-            provider: "google",
-            options: { redirectTo },
-        });
-
-        if (oauthError) {
-            setError(oauthError.message);
-            setIsLoading(false);
-        }
-    }
-
     return (
         <section
             style={{
@@ -111,26 +94,6 @@ function LoginForm() {
             <p style={{ color: "var(--text-secondary)", fontSize: 15, marginBottom: 22 }}>
                 Inicia sesión con tu cuenta administradora.
             </p>
-
-            <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
-                <button
-                    type="button"
-                    disabled={isLoading}
-                    onClick={handleGoogleLogin}
-                    style={{
-                        minHeight: 42,
-                        border: "1px solid var(--border-color)",
-                        borderRadius: 6,
-                        background: "white",
-                        color: "var(--primary-color)",
-                        fontWeight: 700,
-                        cursor: isLoading ? "default" : "pointer",
-                        opacity: isLoading ? 0.7 : 1,
-                    }}
-                >
-                    Entrar con Google
-                </button>
-            </div>
 
             <form onSubmit={handleSubmit} style={{ display: "grid", gap: 14 }}>
                 <label style={{ display: "grid", gap: 6, fontSize: 14, fontWeight: 700 }}>
