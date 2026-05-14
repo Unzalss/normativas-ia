@@ -2618,4 +2618,55 @@ Pendiente:
 - añadir campo de validación manual más adelante
 - decidir si mantener login por contraseña o añadir login con Google
 
+# 62. BLOQUE COMPLETADO — INFORME TÉCNICO CON IA
+
+Estado: COMPLETADO, DESPLEGADO Y VALIDADO EN PRODUCCIÓN  
+Commit: b2048a2 — Add AI technical report generation
+
+Se ha creado una nueva API independiente:
+
+- `/api/report`
+
+Características principales:
+
+- el informe se genera con IA usando `gpt-4o-mini`
+- `/api/report` es independiente de `/api/ask`
+- no se ha tocado RPC
+- no se ha tocado Supabase schema
+- no se ha tocado ingesta BOE
+- no se ha tocado admin/login
+- el frontend llama a `/api/report` desde el botón “Generar informe técnico”
+
+Estructura del informe:
+
+- Objeto
+- Antecedentes / consulta
+- Normativa utilizada
+- Análisis técnico
+- Criterio aplicable
+- Puntos a comprobar
+- Conclusión práctica
+- Limitaciones
+- Advertencia profesional
+
+Validaciones realizadas:
+
+- se validó que no vuelve a llamar a IA al ocultar/mostrar el informe
+- caso normal: “¿Qué temperatura deben tener los locales de trabajo cerrados según el RD-486-1997?”
+- caso PRL: “¿Cuáles son las obligaciones del empresario según la Ley 31/1995?”
+- caso “No consta”: “¿Qué dice el RD-486-1997 sobre piscinas públicas?”
+- se corrigió que referencias internas tipo UNE no aparezcan como normativa principal si no están en `sources.title`
+
+Advertencia:
+
+- el informe es orientativo y exige revisión por técnico competente
+
+Pendiente futuro:
+
+- afinar recuperación/fuentes en consultas temáticas complejas
+- posible exportación PDF/DOCX
+- posible guardado en expedientes
+- posible caché de informes
+- mejorar velocidad si fuese necesario
+
 # FIN DE FOTO FIJA
