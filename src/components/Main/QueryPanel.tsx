@@ -2,7 +2,18 @@ import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
 import { ChevronDown, Search, ChevronRight, FileText, Download, Share, X } from 'lucide-react';
 import { clsx } from 'clsx';
+import { createClient } from '@supabase/supabase-js';
 import { ResponseData, Source, MapNode } from '@/lib/types';
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const DEFAULT_REPORT_LIMITATIONS = [
+    "El informe se basa únicamente en las fuentes recuperadas para esta consulta.",
+    "Puede requerir revisión de otros requisitos aplicables según el tipo de actividad, local y condiciones reales.",
+];
 
 
 
@@ -21,18 +32,155 @@ interface QueryPanelProps {
     onMapNodeSelect?: (node: MapNode | null) => void;
 }
 
-export default function QueryPanel({ query, response, isLoading, error, onQuery, onCitationClick, normas, selectedNormaId, onSelectNormaId, sources = [], selectedMapNode = null, onMapNodeSelect }: QueryPanelProps) {
+type MapaArticulo = {
+    key: string;
+    titulo: string;
+    fragmentos: Source[];
+    minIdx: number;
+    totalFragments: number;
+};
+
+type MapaNorma = {
+    key: string;
+    titulo: string;
+    rango: string | null;
+    articulos: Record<string, MapaArticulo>;
+    minIdx: number;
+    totalFragments: number;
+};
+
+type MapaNormaView = MapaNorma & {
+    articulosList: MapaArticulo[];
+};
+
+type TechnicalReport = {
+    objeto: string;
+    antecedentes_consulta: string;
+    normativa_utilizada: Array<{
+        norma: string;
+        referencias: string[];
+    }>;
+    analisis_tecnico: string;
+    criterio_aplicable: string;
+    puntos_a_comprobar: string[];
+    conclusion_practica: string;
+    limitaciones: string[];
+    advertencia_profesional: string;
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+    }
+
+    const text = String(value || '').trim();
+    return text ? [text] : [];
+};
+
+const normalizeTechnicalReport = (value: unknown): TechnicalReport => {
+    const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const normativaRaw = Array.isArray(source.normativa_utilizada) ? source.normativa_utilizada : [];
+
+    return {
+        objeto: String(source.objeto || '').trim(),
+        antecedentes_consulta: String(source.antecedentes_consulta || '').trim(),
+        normativa_utilizada: normativaRaw
+            .map((item) => {
+                if (!item || typeof item !== 'object') return null;
+                const normaItem = item as Record<string, unknown>;
+                const norma = String(normaItem.norma || '').trim();
+                if (!norma) return null;
+                return {
+                    norma,
+                    referencias: normalizeStringArray(normaItem.referencias),
+                };
+            })
+            .filter((item): item is { norma: string; referencias: string[] } => item !== null),
+        analisis_tecnico: String(source.analisis_tecnico || '').trim(),
+        criterio_aplicable: String(source.criterio_aplicable || '').trim(),
+        puntos_a_comprobar: normalizeStringArray(source.puntos_a_comprobar),
+        conclusion_practica: String(source.conclusion_practica || '').trim(),
+        limitaciones: DEFAULT_REPORT_LIMITATIONS,
+        advertencia_profesional: String(source.advertencia_profesional || '').trim(),
+    };
+};
+
+export default function QueryPanel({ query, response, isLoading, error, onQuery, normas, selectedNormaId, onSelectNormaId, sources = [], selectedMapNode = null, onMapNodeSelect }: QueryPanelProps) {
     const [text, setText] = useState(query);
+    const [showTechnicalReport, setShowTechnicalReport] = useState(false);
+    const [technicalReport, setTechnicalReport] = useState<TechnicalReport | null>(null);
+    const [technicalReportError, setTechnicalReportError] = useState<string | null>(null);
+    const [isGeneratingTechnicalReport, setIsGeneratingTechnicalReport] = useState(false);
 
     // Sync local state when prop changes (restoring history)
     useEffect(() => {
         setText(query);
     }, [query]);
 
+    useEffect(() => {
+        setShowTechnicalReport(false);
+        setTechnicalReport(null);
+        setTechnicalReportError(null);
+        setIsGeneratingTechnicalReport(false);
+    }, [query, response?.id]);
+
     const handleSend = () => {
         if (!text.trim()) return;
         console.log("SEND", text);
         onQuery(text.trim());
+    };
+
+    const handleTechnicalReportToggle = async () => {
+        if (showTechnicalReport) {
+            setShowTechnicalReport(false);
+            return;
+        }
+
+        setShowTechnicalReport(true);
+        if (technicalReport) return;
+        if (isGeneratingTechnicalReport || !response) return;
+
+        setIsGeneratingTechnicalReport(true);
+        setTechnicalReportError(null);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
+            const reportSources = sources.slice(0, 5).map((source) => ({
+                id: source.id,
+                normaId: source.normaId ?? null,
+                title: source.title,
+                label: source.source_label || source.subtitle || source.articulo_detectado || source.metadata?.articulo || null,
+                content: source.content || source.highlight || "",
+            }));
+
+            const res = await fetch("/api/report", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    query,
+                    baseAnswer: response.text,
+                    selectedNormaId,
+                    sources: reportSources,
+                }),
+            });
+
+            const json = await res.json();
+            if (!res.ok || !json.ok || !json.report) {
+                throw new Error(json?.error || "No se pudo generar el informe técnico.");
+            }
+
+            setTechnicalReport(normalizeTechnicalReport(json.report));
+        } catch (reportError: unknown) {
+            const message = reportError instanceof Error ? reportError.message : "No se pudo generar el informe técnico.";
+            setTechnicalReportError(message);
+        } finally {
+            setIsGeneratingTechnicalReport(false);
+        }
     };
 
 
@@ -46,7 +194,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
         // Pre-filter: strictly top 5 sources
         const finalSources = sources.slice(0, 5);
 
-        const grupos: Record<string, any> = {};
+        const grupos: Record<string, MapaNorma> = {};
         
         // 1. Agrupar primero todas las fuentes del subconjunto sin cortes
         finalSources.forEach((s, index) => {
@@ -88,8 +236,8 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
         });
 
         // 4. Ordenar después de construir toda la estructura
-        let normasArray = Object.values(grupos).map(norma => {
-            let artsArray = Object.values(norma.articulos) as any[];
+        let normasArray: MapaNormaView[] = Object.values(grupos).map(norma => {
+            const artsArray = Object.values(norma.articulos);
             // Ordenar artículos: minIdx > totalFragments
             artsArray.sort((a, b) => {
                 if (a.minIdx !== b.minIdx) return a.minIdx - b.minIdx;
@@ -124,7 +272,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
         });
 
         return normasArray;
-    }, [sources, response]);
+    }, [sources]);
 
     return (
         <div className={styles.container}>
@@ -357,7 +505,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                 </div>
                                                 
                                                 <div className={styles.mapaHijos}>
-                                                    {norma.articulosList.map((art: any) => (
+                                                    {norma.articulosList.map((art) => (
                                                         <div 
                                                             key={art.key} 
                                                             className={clsx(
@@ -472,6 +620,114 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                         </div>
                                 )}
                             </div>
+                            {!selectedMapNode && (
+                                <>
+                                    <button
+                                        type="button"
+                                        className={styles.technicalReportToggle}
+                                        onClick={handleTechnicalReportToggle}
+                                        disabled={isGeneratingTechnicalReport}
+                                    >
+                                        <FileText size={16} />
+                                        {showTechnicalReport ? 'Ocultar informe técnico' : 'Generar informe técnico'}
+                                    </button>
+
+                                    {showTechnicalReport && (
+                                        <article className={styles.technicalReportCard}>
+                                            <header className={styles.technicalReportHeader}>
+                                                <div>
+                                                    <div className={styles.technicalReportEyebrow}>Informe técnico</div>
+                                                    <h3 className={styles.technicalReportTitle}>Informe técnico de consulta normativa</h3>
+                                                </div>
+                                            </header>
+
+                                            {isGeneratingTechnicalReport && (
+                                                <div className={styles.technicalReportStatus}>Generando informe técnico...</div>
+                                            )}
+
+                                            {technicalReportError && !isGeneratingTechnicalReport && (
+                                                <div className={styles.technicalReportError}>{technicalReportError}</div>
+                                            )}
+
+                                            {technicalReport && !isGeneratingTechnicalReport && (
+                                                <>
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>1. Objeto</h4>
+                                                        <p>{technicalReport.objeto || 'No disponible.'}</p>
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>2. Antecedentes / consulta</h4>
+                                                        <p>{technicalReport.antecedentes_consulta || query || 'No consta consulta original.'}</p>
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>3. Normativa utilizada</h4>
+                                                        {technicalReport.normativa_utilizada?.length > 0 ? (
+                                                            <ul>
+                                                                {technicalReport.normativa_utilizada.map((item, index) => (
+                                                                    <li key={`${item.norma}-${index}`}>
+                                                                        <strong>{item.norma}</strong>
+                                                                        {item.referencias.length > 0 ? `: ${item.referencias.join(', ')}` : ' Referencias no especificadas.'}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : (
+                                                            <p>No se han identificado normas concretas suficientes.</p>
+                                                        )}
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>4. Análisis técnico</h4>
+                                                        <p>{technicalReport.analisis_tecnico || 'No hay análisis técnico disponible.'}</p>
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>5. Criterio aplicable</h4>
+                                                        <p>{technicalReport.criterio_aplicable || 'No hay criterio aplicable disponible.'}</p>
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>6. Puntos a comprobar</h4>
+                                                        {technicalReport.puntos_a_comprobar?.length > 0 ? (
+                                                            <ul>
+                                                                {technicalReport.puntos_a_comprobar.map((point, index) => (
+                                                                    <li key={`${point}-${index}`}>{point}</li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : (
+                                                            <p>No constan puntos adicionales a comprobar.</p>
+                                                        )}
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>7. Conclusión práctica</h4>
+                                                        <p>{technicalReport.conclusion_practica || 'No hay conclusión práctica disponible.'}</p>
+                                                    </section>
+
+                                                    <section className={styles.technicalReportSection}>
+                                                        <h4>8. Limitaciones</h4>
+                                                        {technicalReport.limitaciones?.length > 0 ? (
+                                                            <ul>
+                                                                {technicalReport.limitaciones.map((limit, index) => (
+                                                                    <li key={`${limit}-${index}`}>{limit}</li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : (
+                                                            <p>El informe se limita a las fuentes recuperadas para esta consulta.</p>
+                                                        )}
+                                                    </section>
+
+                                                    <section className={`${styles.technicalReportSection} ${styles.technicalReportWarning}`}>
+                                                        <h4>9. Advertencia profesional</h4>
+                                                        <p>{technicalReport.advertencia_profesional}</p>
+                                                    </section>
+                                                </>
+                                            )}
+                                        </article>
+                                    )}
+                                </>
+                            )}
                         </div>
                     );
                 })()}
