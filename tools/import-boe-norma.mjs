@@ -10,8 +10,8 @@ dotenv.config({ quiet: true });
 
 const BOE_TEXT_URL = "https://www.boe.es/datosabiertos/api/legislacion-consolidada/id";
 const OUTPUT_DIR = path.join("tools", "output");
-const MAX_FRAGMENT_LENGTH = 8000;
-const SPLIT_TARGET_LENGTH = 7600;
+const MAX_FRAGMENT_LENGTH = 5000;
+const SPLIT_TARGET_LENGTH = 4600;
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_BATCH_SIZE = 50;
 
@@ -147,6 +147,59 @@ function isInformationalBlock(text) {
     /^Nota(?:\s+informativa)?\s*:/i.test(value);
 }
 
+function isSubmittableLegalBlock(text) {
+  const value = String(text || "").trim();
+  const normalized = normalizeReviewText(value);
+  if (isInformationalBlock(value)) return false;
+  return !(normalized.startsWith("informacion relacionada") || normalized.startsWith("tengase en cuenta"));
+}
+
+function normalizeCodeSource(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function numberYearFromOfficialNumber(value) {
+  const match = normalizeCodeSource(value).match(/\b(\d{1,5})\s*\/\s*(\d{4})\b/);
+  return match ? { number: match[1], year: match[2] } : null;
+}
+
+function deriveLegalCodeFromMetadata(metadata) {
+  const title = normalizeCodeSource(metadata?.titulo);
+  const rango = normalizeCodeSource(metadata?.rango).toLowerCase();
+  const official = numberYearFromOfficialNumber(metadata?.numero_oficial);
+
+  const patterns = [
+    { prefix: "RDL", regex: /\breal decreto legislativo\s+(\d{1,5})\s*\/\s*(\d{4})\b/i },
+    { prefix: "RDL", regex: /\breal decreto-ley\s+(\d{1,5})\s*\/\s*(\d{4})\b/i },
+    { prefix: "RD", regex: /\breal decreto\s+(\d{1,5})\s*\/\s*(\d{4})\b/i },
+    { prefix: "LEY", regex: /\bley(?:\s+organica)?\s+(\d{1,5})\s*\/\s*(\d{4})\b/i },
+  ];
+
+  for (const pattern of patterns) {
+    const match = title.match(pattern.regex);
+    if (match) return `${pattern.prefix}-${match[1]}-${match[2]}`;
+  }
+
+  if (official) {
+    if (rango.includes("real decreto legislativo") || rango.includes("real decreto-ley")) {
+      return `RDL-${official.number}-${official.year}`;
+    }
+    if (rango === "real decreto" || rango.includes("real decreto")) {
+      return `RD-${official.number}-${official.year}`;
+    }
+    if (rango.includes("ley")) {
+      return `LEY-${official.number}-${official.year}`;
+    }
+  }
+
+  return metadata?.boeId || metadata?.identificador || null;
+}
+
 function metadataFromXml(xml, boeId) {
   const metadatos = xml.match(/<metadatos\b[^>]*>([\s\S]*?)<\/metadatos>/i)?.[1] || xml;
   const title =
@@ -167,7 +220,7 @@ function metadataFromXml(xml, boeId) {
     boeId;
   const numeroOficial = firstTagText(metadatos, ["numero_oficial"]);
 
-  return {
+  const metadata = {
     boeId,
     titulo: title,
     rango,
@@ -176,6 +229,10 @@ function metadataFromXml(xml, boeId) {
     fecha_publicacion: fechaPublicacion,
     identificador,
     numero_oficial: numeroOficial,
+  };
+  return {
+    ...metadata,
+    codigo_sugerido: deriveLegalCodeFromMetadata(metadata),
   };
 }
 
@@ -193,6 +250,7 @@ function tipoFromBloque(attrs, title) {
 
 function textFromBloqueBody(body, title) {
   const text = stripTags(body);
+  if (/^pre(?:Ã¡|á|a)mbulo$/i.test(String(title || "").trim())) return text;
   if (!title || text.toLowerCase().startsWith(title.toLowerCase())) return text;
   return `${title}\n${text}`.trim();
 }
@@ -260,7 +318,7 @@ function fragmentsFromStructuredXml(xml, warnings) {
 
     const text = textFromBloqueBody(selectedVersion.body, titleAttr);
     if (text.length < 20) continue;
-    if (isInformationalBlock(text)) {
+    if (!isSubmittableLegalBlock(text)) {
       warnings.push(`Bloque informativo BOE excluido de fragmentos jurídicos: ${text.slice(0, 140).replace(/\s+/g, " ")}`);
       continue;
     }
@@ -290,7 +348,9 @@ function fragmentsFromStructuredXml(xml, warnings) {
     });
   }
 
-  return withOrden(splitOversizedFragments(splitLargeAnexos(dedupeAnexos(fragments, warnings), warnings), warnings));
+  const splitFragments = splitOversizedFragments(splitLargeAnexos(dedupeAnexos(fragments, warnings), warnings), warnings);
+  const cleanedFragments = cleanTinyOrphanFragments(splitFragments, warnings);
+  return withOrden(splitOversizedFragments(cleanedFragments, warnings));
 }
 
 function anexoRootLabel(seccion) {
@@ -335,7 +395,7 @@ function dedupeAnexos(fragments, warnings) {
   return output;
 }
 
-function findInternalAnexoHeadings(text) {
+function findInternalAnexoHeadings(text, parentLabel = "") {
   const headings = [];
   const headingRegex = /(?:^|\n)\s*((?:Observaci(?:ó|o)n preliminar)|(?:ANEXO\s+(?:[IVXLCDM]+|ÚNICO|UNICO)\b[^\n]{0,120})|(?:AP[ÉE]NDICE\b[^\n]{0,140})|(?:Secci(?:ó|o)n\s+\d+[.ªº]?\b[^\n]{0,140})|(?:Sistemas?\s+de\s+[A-ZÁÉÍÓÚÜÑa-záéíóúüñ][^\n]{5,140})|(?:Tabla\s+[IVXLCDM\d]+\b[^\n]{0,140})|(?:(?:\d{1,2}\.\s+)|(?:\d{1,2}(?:\.\d{1,2})+\.?\s+))[A-ZÁÉÍÓÚÜÑ][^\n]{3,140})\s*(?=\n|$)/gi;
   let match;
@@ -355,7 +415,21 @@ function findInternalAnexoHeadings(text) {
     });
   }
 
-  return headings;
+  if (/\bANEXO\s+II\b/i.test(String(parentLabel || ""))) {
+    const anexoIIMaintenanceHeadingRegex = /(?:^|\n)\s*((?:Sistemas?\s+de\s+detecci[^\n.]{0,80})|(?:Fuentes\s+de\s+alimentaci[^\n.]{0,80})|(?:Dispositivos\s+para\s+la\s+activaci[^\n.]{0,100})|(?:Dispositivos\s+de\s+transmisi[^\n.]{0,100})|(?:Extintores\s+de\s+incendio)|(?:Bocas\s+de\s+incendios?\s+equipadas\s+\(BIE\))|(?:Hidrantes)|(?:Columnas\s+secas)|(?:Sistemas?\s+de\s+abastecimiento\s+de\s+agua\s+contra\s+incendios)|(?:Sistemas?\s+fijos?\s+de\s+extinci[^\n:]{0,80}:?)|(?:Sistemas?\s+para\s+el\s+control\s+de\s+humos\s+y\s+de\s+calor)|(?:Sistemas?\s+de\s+se[^\n.]{0,30}alizaci[^\n.]{0,80}))\.?\s*(?=\n|$)/gi;
+
+    while ((match = anexoIIMaintenanceHeadingRegex.exec(text)) !== null) {
+      const title = match[1].trim();
+      headings.push({
+        title,
+        index: match.index + match[0].indexOf(match[1]),
+      });
+    }
+  }
+
+  return headings
+    .sort((a, b) => a.index - b.index)
+    .filter((heading, index, sorted) => index === 0 || heading.index !== sorted[index - 1].index);
 }
 
 function splitTextByApproxLimit(text, limit = SPLIT_TARGET_LENGTH) {
@@ -391,6 +465,40 @@ function splitTextByApproxLimit(text, limit = SPLIT_TARGET_LENGTH) {
   return parts.filter(Boolean);
 }
 
+function splitTextByReviewLimit(text, limit = SPLIT_TARGET_LENGTH) {
+  if (String(text || "").length <= limit) return [String(text || "").trim()].filter(Boolean);
+
+  const parts = [];
+  let offset = 0;
+
+  while (offset < text.length) {
+    if (text.length - offset <= limit) {
+      parts.push(text.slice(offset).trim());
+      break;
+    }
+
+    const target = offset + limit;
+    const windowStart = Math.max(offset + Math.floor(limit * 0.45), target - 1800);
+    const window = text.slice(windowStart, Math.min(text.length, target));
+    const candidates = ["\n\n", "\n", ". "]
+      .map((separator) => {
+        const localIndex = window.lastIndexOf(separator);
+        return localIndex === -1 ? -1 : windowStart + localIndex + separator.length;
+      })
+      .filter((index) => index > offset);
+    let cut = candidates.length > 0 ? Math.max(...candidates) : -1;
+    if (cut === -1) {
+      const spaceIndex = text.slice(offset, target).lastIndexOf(" ");
+      cut = spaceIndex > Math.floor(limit * 0.45) ? offset + spaceIndex : target;
+    }
+
+    parts.push(text.slice(offset, cut).trim());
+    offset = cut;
+  }
+
+  return parts.filter(Boolean);
+}
+
 function appendFragmentHeadingLabel(parentLabel, headingTitle) {
   const parent = String(parentLabel || "").trim();
   const heading = String(headingTitle || "").trim();
@@ -402,6 +510,39 @@ function appendFragmentHeadingLabel(parentLabel, headingTitle) {
   }
 
   return `${parent} - ${heading}`;
+}
+
+function isAnexoIIFragment(fragment) {
+  return /\bANEXO\s+II\b/i.test(String(fragment?.source_label || fragment?.seccion || ""));
+}
+
+function isAnexoIITableHeading(title) {
+  return /^Tabla\s+(?:I{1,3}|IV|V|\d+)\b/i.test(String(title || ""));
+}
+
+function isAnexoIIMaintenanceHeading(title) {
+  return /^(?:Sistemas?|Fuentes|Dispositivos|Extintores|Bocas|Hidrantes|Columnas)\b/i.test(String(title || ""));
+}
+
+function tableContextLabel(title) {
+  const value = String(title || "").trim();
+  const tableMatch = value.match(/^Tabla\s+([IVXLCDM\d]+)/i);
+  if (!tableMatch) return value;
+
+  const tableName = `Tabla ${tableMatch[1].toUpperCase()}`;
+  const normalized = normalizeReviewText(value);
+  const periods = [];
+  if (/\btrimestral\b/.test(normalized)) periods.push("Trimestral");
+  if (/\bsemestral\b/.test(normalized)) periods.push("Semestral");
+  if (/\banual\b/.test(normalized)) periods.push("Anual");
+  if (/\bquinquenal\b/.test(normalized)) periods.push("Quinquenal");
+
+  return periods.length > 0 ? `${tableName} - ${periods.join("/")}` : tableName;
+}
+
+function hasMaintenanceOperationText(text) {
+  const normalized = normalizeReviewText(text);
+  return /\b(paso|revision|implementacion|prueba|comprobacion|comprobar|verificacion|verificar|inspeccion|inspeccionar|limpieza|limpiar|realizar|engrasar|cambio|sustitucion|sustituir|apertura|cierre|abrir|cerrar|funcionamiento|estanquidad|estado|accesibilidad|senalizacion|mantenimiento)\b/.test(normalized);
 }
 
 function splitOversizedFragments(fragments, warnings) {
@@ -433,7 +574,16 @@ function splitOversizedFragments(fragments, warnings) {
 }
 
 function splitLargeAnexoFragment(fragment) {
-  const headings = findInternalAnexoHeadings(fragment.texto);
+  if (/^ANEXO\s+II$/i.test(String(fragment.source_label || "").trim()) && fragment.texto.length > SPLIT_TARGET_LENGTH) {
+    return splitTextByReviewLimit(fragment.texto, SPLIT_TARGET_LENGTH).map((texto, index) => ({
+      ...fragment,
+      seccion: `${fragment.seccion} - Parte ${index + 1}`,
+      source_label: `${fragment.source_label} - Parte ${index + 1}`,
+      texto,
+    }));
+  }
+
+  const headings = findInternalAnexoHeadings(fragment.texto, fragment.source_label || fragment.seccion);
   if (headings.length < 2) {
     return splitTextByApproxLimit(fragment.texto).map((texto, index) => ({
       ...fragment,
@@ -454,24 +604,48 @@ function splitLargeAnexoFragment(fragment) {
     });
   }
 
+  let currentTableTitle = "";
+
   headings.forEach((heading, index) => {
     const next = headings[index + 1];
     const text = fragment.texto.slice(heading.index, next ? next.index : fragment.texto.length).trim();
     if (text.length < 20) return;
 
+    const anexoII = isAnexoIIFragment(fragment);
+    if (anexoII && isAnexoIITableHeading(heading.title)) {
+      currentTableTitle = heading.title;
+    }
+
+    const shouldApplyTableContext =
+      anexoII &&
+      currentTableTitle &&
+      !isAnexoIITableHeading(heading.title) &&
+      isAnexoIIMaintenanceHeading(heading.title);
+    const parentSeccion = shouldApplyTableContext
+      ? appendFragmentHeadingLabel(fragment.seccion, tableContextLabel(currentTableTitle))
+      : fragment.seccion;
+    const parentSourceLabel = shouldApplyTableContext
+      ? appendFragmentHeadingLabel(fragment.source_label, tableContextLabel(currentTableTitle))
+      : fragment.source_label;
+    const fragmentText = text;
+
+    if (shouldApplyTableContext && !hasMaintenanceOperationText(text)) {
+      return;
+    }
+
     const base = {
       ...fragment,
-      seccion: appendFragmentHeadingLabel(fragment.seccion, heading.title),
-      source_label: appendFragmentHeadingLabel(fragment.source_label, heading.title),
-      texto: text,
+      seccion: appendFragmentHeadingLabel(parentSeccion, heading.title),
+      source_label: appendFragmentHeadingLabel(parentSourceLabel, heading.title),
+      texto: fragmentText,
     };
 
-    if (text.length <= MAX_FRAGMENT_LENGTH) {
+    if (fragmentText.length <= MAX_FRAGMENT_LENGTH) {
       pieces.push(base);
       return;
     }
 
-    splitTextByApproxLimit(text).forEach((partText, partIndex) => {
+    splitTextByApproxLimit(fragmentText).forEach((partText, partIndex) => {
       pieces.push({
         ...base,
         seccion: `${base.seccion} - Parte ${partIndex + 1}`,
@@ -488,7 +662,11 @@ function splitLargeAnexos(fragments, warnings) {
   const output = [];
 
   for (const fragment of fragments) {
-    if (fragment.tipo !== "Anexo" || fragment.texto.length <= MAX_FRAGMENT_LENGTH) {
+    const shouldSplitAnexoIIForReview =
+      /^ANEXO\s+II$/i.test(String(fragment.source_label || "").trim()) &&
+      fragment.texto.length > SPLIT_TARGET_LENGTH;
+
+    if (fragment.tipo !== "Anexo" || (fragment.texto.length <= MAX_FRAGMENT_LENGTH && !shouldSplitAnexoIIForReview)) {
       output.push(fragment);
       continue;
     }
@@ -498,6 +676,103 @@ function splitLargeAnexos(fragments, warnings) {
     warnings.push(
       `Anexo grande dividido: ${fragment.source_label} (${fragment.texto.length} caracteres) en ${pieces.length} fragmentos.`
     );
+  }
+
+  return output;
+}
+
+function normalizeReviewText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function anexoPrefixLabel(fragment) {
+  const label = String(fragment?.source_label || fragment?.seccion || "");
+  const match = label.match(/\bANEXO\s+(?:[IVXLCDM]+|ÚNICO|UNICO)\b/i);
+  return match ? match[0].toUpperCase() : "";
+}
+
+function isAnexoIVShortEpigraph(fragment) {
+  const label = String(fragment?.source_label || "");
+  const text = String(fragment?.texto || "");
+  return /^ANEXO\s+IV\s+-\s+[4-9]\./i.test(label) && text.length < 120;
+}
+
+function isTitleOnlyFragment(fragment) {
+  const text = String(fragment?.texto || "").trim();
+  if (!text || text.length >= 130) return false;
+
+  const textNorm = normalizeReviewText(text);
+  const labelNorm = normalizeReviewText(fragment?.source_label || fragment?.seccion || "");
+  if (!textNorm || !labelNorm) return false;
+  const labelTailNorm = normalizeReviewText(String(fragment?.source_label || fragment?.seccion || "").split(" - ").pop());
+  const hasActionVerb = /\b(verificar|comprobar|realizar|limpieza|prueba|revision|inspeccion|cambio|sustituir|engrasar|abrir|cerrar)\b/.test(textNorm);
+
+  if (!hasActionVerb && (labelNorm.endsWith(textNorm) || textNorm.startsWith(labelNorm) || (labelTailNorm && textNorm.startsWith(labelTailNorm)))) return true;
+  if (textNorm.startsWith("anexo ") && labelNorm.startsWith(textNorm.split(" ").slice(0, 2).join(" "))) return true;
+  return /^(reglamento|anexo|seccion|capitulo|tabla|\d+\s+)/.test(textNorm) && !hasActionVerb;
+}
+
+function canMergeTitleWithNext(current, next) {
+  if (!next) return false;
+  if (current?.tipo !== "Anexo" || next?.tipo !== "Anexo") return false;
+  const currentAnexo = anexoPrefixLabel(current);
+  const nextAnexo = anexoPrefixLabel(next);
+  return currentAnexo === "ANEXO II" && nextAnexo === "ANEXO II";
+}
+
+function cleanTinyOrphanFragments(fragments, warnings) {
+  const output = [];
+  let mergedTinyTitles = 0;
+  let mergedAnexoIVEpigraphs = 0;
+
+  for (let i = 0; i < fragments.length; i += 1) {
+    const fragment = fragments[i];
+
+    if (isAnexoIVShortEpigraph(fragment)) {
+      const group = [fragment];
+      let j = i + 1;
+      while (j < fragments.length && isAnexoIVShortEpigraph(fragments[j])) {
+        group.push(fragments[j]);
+        j += 1;
+      }
+
+      if (group.length > 1) {
+        output.push({
+          ...fragment,
+          seccion: "ANEXO IV - 4 a 9. Epígrafes técnicos",
+          source_label: "ANEXO IV - 4 a 9. Epígrafes técnicos",
+          texto: group.map((item) => item.texto).join("\n"),
+        });
+        mergedAnexoIVEpigraphs += group.length;
+        i = j - 1;
+        continue;
+      }
+    }
+
+    const next = fragments[i + 1];
+    if (isTitleOnlyFragment(fragment) && canMergeTitleWithNext(fragment, next)) {
+      fragments[i + 1] = {
+        ...next,
+        texto: `${fragment.texto}\n${next.texto}`.trim(),
+      };
+      mergedTinyTitles += 1;
+      continue;
+    }
+
+    output.push(fragment);
+  }
+
+  if (mergedTinyTitles > 0) {
+    warnings.push(`Fragmentos titulo huerfanos fusionados con el bloque siguiente: ${mergedTinyTitles}.`);
+  }
+  if (mergedAnexoIVEpigraphs > 0) {
+    warnings.push(`Epigrafes cortos del ANEXO IV agrupados para revision: ${mergedAnexoIVEpigraphs}.`);
   }
 
   return output;
@@ -605,6 +880,7 @@ function printSummary({ metadata, stats, warnings, fragments }) {
   console.log(`Rango: ${metadata.rango || "N/D"}`);
   console.log(`Fecha: ${metadata.fecha || "N/D"}`);
   console.log(`Identificador: ${metadata.identificador || "N/D"}`);
+  console.log(`CÃ³digo sugerido: ${metadata.codigo_sugerido || metadata.boeId || "N/D"}`);
   console.log(`Total bloques XML/candidatos: ${stats.total_fragmentos_candidatos}`);
   console.log(`Total fragmentos candidatos: ${stats.total_fragmentos_candidatos}`);
   console.log(`Artículos detectados: ${stats.articulos_detectados}`);
@@ -625,6 +901,340 @@ function printSummary({ metadata, stats, warnings, fragments }) {
     console.log(`article_number=${fragment.article_number ?? "null"} | fuente_bloque_id=${fragment.fuente_bloque_id ?? "null"}`);
     console.log(`"${preview}${fragment.texto.length > 180 ? "..." : ""}"`);
   });
+}
+
+function markdownValue(value) {
+  if (value === null || value === undefined || value === "") return "N/D";
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function markdownSnippet(text, maxLength = 420) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength).trim()}...`;
+}
+
+function fragmentSimpleWarnings(fragment) {
+  const warnings = [];
+  const text = String(fragment?.texto || "");
+  const sourceLabel = String(fragment?.source_label || "");
+  const seccion = String(fragment?.seccion || "");
+
+  if (text.length > SPLIT_TARGET_LENGTH) {
+    warnings.push(`Bloque largo (${text.length} caracteres). Revisar si conviene dividirlo mejor.`);
+  }
+  if (text.length > MAX_FRAGMENT_LENGTH) {
+    warnings.push(`Supera el maximo previsto (${MAX_FRAGMENT_LENGTH} caracteres).`);
+  }
+  if (!sourceLabel.trim()) {
+    warnings.push("source_label vacio.");
+  }
+  if (!seccion.trim()) {
+    warnings.push("seccion vacia.");
+  }
+  if (/parte\s+\d+$/i.test(sourceLabel)) {
+    warnings.push("Bloque dividido por longitud; revisar continuidad del texto.");
+  }
+  if (fragment?.tipo === "Anexo" && /art(?:í|i)culo/i.test(seccion)) {
+    warnings.push("Tipo Anexo con seccion que parece articulo.");
+  }
+  if (fragment?.tipo === "ArtÃ­culo" && fragment?.article_number === null) {
+    warnings.push("Articulo sin article_number detectado.");
+  }
+
+  return warnings;
+}
+
+function buildMarkdownPreview(preview) {
+  const metadata = preview.metadata || {};
+  const stats = preview.stats || {};
+  const warnings = Array.isArray(preview.warnings) ? preview.warnings : [];
+  const fragments = Array.isArray(preview.fragments) ? preview.fragments : [];
+  const lines = [];
+
+  lines.push(`# Preview BOE - ${markdownValue(metadata.boeId)}`);
+  lines.push("");
+  lines.push("# INSTRUCCIONES PARA REVISIÓN CON IA");
+  lines.push("");
+  lines.push("Este archivo es un preview tecnico de fragmentacion automatica antes de subir una norma a Supabase.");
+  lines.push("");
+  lines.push("La IA revisora debe seguir estas reglas:");
+  lines.push("");
+  lines.push("- No debe reescribir la norma.");
+  lines.push("- No debe inventar texto.");
+  lines.push("- No debe corregir contenido juridico.");
+  lines.push("- No debe crear nuevos fragmentos manualmente.");
+  lines.push("- Solo debe revisar si la division automatica es buena.");
+  lines.push("- Debe comprobar si source_label coincide con el texto inicial.");
+  lines.push("- Debe detectar bloques mezclados.");
+  lines.push("- Debe detectar anexos o tablas mal divididos.");
+  lines.push("- Debe detectar bloques demasiado largos.");
+  lines.push("- Debe revisar especialmente anexos, tablas, apendices, epigrafes tecnicos y mantenimiento.");
+  lines.push("- Debe decir si esta OK para subir o NO subir todavia.");
+  lines.push("- Si la IA revisora no esta segura, debe decir \"revision dudosa\" y no proponer cambios agresivos.");
+  lines.push("- No debe preparar el prompt final para Codex.");
+  lines.push("- Si detecta problemas, debe preparar INSTRUCCIONES PARA CHATGPT para que ChatGPT redacte despues el prompt bueno para Codex.");
+  lines.push("");
+  lines.push("## REGLA DE DECISION FINAL");
+  lines.push("");
+  lines.push("- La IA revisora puede detectar problemas y proponer instrucciones.");
+  lines.push("- Gemini u otra IA revisora no decide la subida definitiva.");
+  lines.push("- La decision final depende del dry-run de integridad y de la revision final de ChatGPT.");
+  lines.push("- Si el dry-run indica APTO PARA SUBIR y confirma:");
+  lines.push("  - preview.json contiene instrucciones: no");
+  lines.push("  - Fragmentos con instrucciones del preview: 0");
+  lines.push("  - Fragmentos vacios/decorativos: 0");
+  lines.push("  - Mezclas evidentes en ANEXO II: 0");
+  lines.push("  - source_label con '/' de fusion artificial: 0");
+  lines.push("  - Contexto de tabla dentro de texto operativo ANEXO II: 0");
+  lines.push("  - Fragmentos no literales/contiguos detectados: 0");
+  lines.push("  entonces la IA revisora no debe marcar NO SUBIR por simples bloques cortos, titulos oficiales repetidos o texto oficial que tambien aparezca en source_label.");
+  lines.push("- Solo debe marcar NO SUBIR si detecta mezcla real de contenidos, texto inventado, perdida de texto juridico, fragmentos no literales, instrucciones dentro de preview.json o bloques realmente vacios/decorativos.");
+  lines.push("");
+  lines.push("La IA revisora debe responder SIEMPRE con esta estructura exacta:");
+  lines.push("");
+  lines.push("VEREDICTO:");
+  lines.push("OK PARA SUBIR / NO SUBIR TODAVIA");
+  lines.push("");
+  lines.push("DIAGNOSTICO:");
+  lines.push("explicacion breve del problema");
+  lines.push("");
+  lines.push("BLOQUES CON PROBLEMAS:");
+  lines.push("bloque, etiqueta actual, problema concreto");
+  lines.push("");
+  lines.push("INSTRUCCIONES PARA CHATGPT:");
+  lines.push("- Norma revisada:");
+  lines.push("- Archivo que podria tocar Codex: tools/import-boe-norma.mjs");
+  lines.push("- Problema detectado:");
+  lines.push("- Bloques afectados:");
+  lines.push("- Cambio minimo recomendado:");
+  lines.push("- Que NO debe tocar Codex:");
+  lines.push("  - Supabase");
+  lines.push("  - /api/ask");
+  lines.push("  - frontend");
+  lines.push("  - SQL");
+  lines.push("  - embeddings");
+  lines.push("  - subida real");
+  lines.push("  - contenido juridico");
+  lines.push("- Prueba obligatoria:");
+  lines.push("  node tools/import-boe-norma.mjs --boe-id BOE-A-2017-6606 --dry-run");
+  lines.push("- Obligacion que debe incluir el PROMPT PARA CODEX:");
+  lines.push("  - Despues de modificar tools/import-boe-norma.mjs, Codex debe ejecutar siempre: node tools/import-boe-norma.mjs --boe-id BOE-A-2017-6606 --dry-run");
+  lines.push("  - Codex debe dejar regenerado el archivo: tools/output/BOE-A-2017-6606/preview.md");
+  lines.push("  - Codex no debe pedir al usuario que ejecute el comando.");
+  lines.push("  - Codex debe hacer la prueba y devolver el resultado.");
+  lines.push("- Que debe comprobar ChatGPT antes de preparar el prompt para Codex:");
+  lines.push("  - ChatGPT debe preparar prompt para Codex solo si el problema sigue existiendo despues del dry-run.");
+  lines.push("  - ChatGPT debe preparar prompt para Codex solo si el dry-run no devuelve APTO PARA SUBIR.");
+  lines.push("  - ChatGPT debe preparar prompt para Codex solo si hay una mezcla real visible en los bloques.");
+  lines.push("");
+  lines.push("RESUMEN FINAL:");
+  lines.push("maximo 5 lineas");
+  lines.push("");
+  lines.push("## 1. Datos de la norma");
+  lines.push("");
+  lines.push(`- BOE ID: ${markdownValue(metadata.boeId)}`);
+  lines.push(`- Titulo: ${markdownValue(metadata.titulo)}`);
+  lines.push(`- Rango: ${markdownValue(metadata.rango)}`);
+  lines.push(`- Fecha: ${markdownValue(metadata.fecha)}`);
+  lines.push(`- Fecha disposicion: ${markdownValue(metadata.fecha_disposicion)}`);
+  lines.push(`- Fecha publicacion: ${markdownValue(metadata.fecha_publicacion)}`);
+  lines.push(`- Identificador: ${markdownValue(metadata.identificador)}`);
+  lines.push(`- Codigo sugerido: ${markdownValue(metadata.codigo_sugerido || metadata.boeId)}`);
+  lines.push(`- Source URL: ${markdownValue(metadata.source_url)}`);
+  lines.push(`- Metadata URL: ${markdownValue(metadata.metadata_url)}`);
+  lines.push("");
+  lines.push("## 2. Estadisticas generales");
+  lines.push("");
+  lines.push(`- Total fragmentos candidatos: ${markdownValue(stats.total_fragmentos_candidatos)}`);
+  lines.push(`- Articulos detectados: ${markdownValue(stats.articulos_detectados)}`);
+  lines.push(`- Anexos detectados: ${markdownValue(stats.anexos_detectados)}`);
+  lines.push(`- Fragmentos de anexo: ${markdownValue(stats.fragmentos_anexo)}`);
+  lines.push(`- Disposiciones detectadas: ${markdownValue(stats.disposiciones_detectadas)}`);
+  lines.push(`- Fragmento mas largo: ${markdownValue(stats.fragmento_mas_largo)} caracteres`);
+  lines.push("");
+  lines.push("## 3. Warnings generales");
+  lines.push("");
+  if (warnings.length === 0) {
+    lines.push("- Ninguno");
+  } else {
+    warnings.forEach((warning) => lines.push(`- ${markdownValue(warning)}`));
+  }
+  lines.push("");
+  lines.push("## 4. Lista de bloques detectados");
+  lines.push("");
+  lines.push("| # | Tipo | Source label | Longitud | Avisos |");
+  lines.push("|---:|---|---|---:|---|");
+  fragments.forEach((fragment, index) => {
+    const blockWarnings = fragmentSimpleWarnings(fragment);
+    const safeLabel = markdownValue(fragment.source_label).replace(/\|/g, "\\|");
+    lines.push(`| ${index + 1} | ${markdownValue(fragment.tipo)} | ${safeLabel} | ${String(fragment.texto || "").length} | ${blockWarnings.length ? blockWarnings.length : "OK"} |`);
+  });
+  lines.push("");
+  lines.push("## 5. Detalle de bloques");
+  lines.push("");
+
+  fragments.forEach((fragment, index) => {
+    const blockWarnings = fragmentSimpleWarnings(fragment);
+    lines.push(`### Bloque ${index + 1}`);
+    lines.push("");
+    lines.push(`- source_label: ${markdownValue(fragment.source_label)}`);
+    lines.push(`- tipo: ${markdownValue(fragment.tipo)}`);
+    lines.push(`- seccion: ${markdownValue(fragment.seccion)}`);
+    lines.push(`- article_number: ${markdownValue(fragment.article_number)}`);
+    lines.push(`- longitud_texto: ${String(fragment.texto || "").length}`);
+    lines.push(`- fuente_bloque_id: ${markdownValue(fragment.fuente_bloque_id)}`);
+    lines.push("");
+    lines.push("Avisos:");
+    if (blockWarnings.length === 0) {
+      lines.push("- Ninguno");
+    } else {
+      blockWarnings.forEach((warning) => lines.push(`- ${warning}`));
+    }
+    lines.push("");
+    lines.push("Texto inicial:");
+    lines.push("");
+    lines.push(`> ${markdownSnippet(fragment.texto).replace(/\n/g, "\n> ")}`);
+    lines.push("");
+  });
+
+  return `${lines.join("\n")}\n`;
+}
+
+async function writeReviewPreviewFiles({ boeId, preview }) {
+  const previewDir = path.join(OUTPUT_DIR, boeId);
+  const jsonPath = path.join(previewDir, "preview.json");
+  const markdownPath = path.join(previewDir, "preview.md");
+
+  await fs.mkdir(previewDir, { recursive: true });
+  await fs.writeFile(jsonPath, JSON.stringify(preview, null, 2), "utf8");
+  await fs.writeFile(markdownPath, buildMarkdownPreview(preview), "utf8");
+
+  return { previewDir, jsonPath, markdownPath };
+}
+
+function normalizeIntegrityText(value) {
+  return String(value || "")
+    .replace(/[«»]/g, "\"")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function containsPreviewInstructionsText(value) {
+  return /INSTRUCCIONES PARA REVISI|INSTRUCCIONES PARA CHATGPT|PROMPT PARA CODEX|VEREDICTO:|RESUMEN FINAL:/i.test(String(value || ""));
+}
+
+function isDecorativeOnlyFragmentText(text) {
+  const value = normalizeIntegrityText(text);
+  if (!value || value.length < 20) return true;
+  return /^(anexo|secci(?:Ã³|o)n|cap(?:Ã­|i)tulo|tabla|reglamento|ap(?:Ã©|e)ndice)(\s+[ivxlcdm\dªº.:-]+)?$/i.test(value);
+}
+
+function validateDryRunIntegrity({ preview, xml }) {
+  const fragments = Array.isArray(preview?.fragments) ? preview.fragments : [];
+  const officialText = normalizeIntegrityText(stripTags(xml));
+  const previewJson = JSON.stringify(preview);
+  const previewMarkdown = buildMarkdownPreview(preview);
+  const problems = [];
+  const nonLiteralFragments = [];
+
+  const pushProblem = (kind, message, fragment = null) => {
+    problems.push({
+      kind,
+      message,
+      orden: fragment?.orden ?? null,
+      source_label: fragment?.source_label ?? null,
+    });
+  };
+
+  fragments.forEach((fragment) => {
+    const text = normalizeIntegrityText(fragment?.texto || "");
+    const sourceLabel = String(fragment?.source_label || "");
+    const seccion = String(fragment?.seccion || "");
+
+    if (containsPreviewInstructionsText(text) || containsPreviewInstructionsText(sourceLabel) || containsPreviewInstructionsText(seccion)) {
+      pushProblem("preview_instructions_in_fragment", "Las instrucciones del preview aparecen en un fragmento subible.", fragment);
+    }
+
+    if (isDecorativeOnlyFragmentText(text)) {
+      pushProblem("empty_or_decorative_fragment", "Fragmento vacÃ­o o solo decorativo.", fragment);
+    }
+
+    if (!officialText.includes(text)) {
+      nonLiteralFragments.push({
+        orden: fragment.orden,
+        source_label: sourceLabel,
+        length: text.length,
+        preview: text.slice(0, 180),
+      });
+      pushProblem("non_literal_text", "El texto del fragmento no aparece como texto literal y contiguo en el BOE/XML oficial.", fragment);
+    }
+
+    if (/\bANEXO\s+II\b/i.test(sourceLabel)) {
+      const lowerText = text.toLowerCase();
+      if (/\s\/\s/.test(sourceLabel)) {
+        pushProblem("mixed_source_label", "source_label contiene '/' con espacios, posible fusiÃ³n artificial de sistemas.", fragment);
+      }
+      if (/-\s+Tabla\s+(?:I|II)\s+-/i.test(sourceLabel) && /^Tabla\s+(?:I|II)\./i.test(text)) {
+        pushProblem("table_context_in_text", "Fragmento operativo de ANEXO II conserva encabezado de tabla dentro del campo texto.", fragment);
+      }
+      if (/hidrantes/.test(lowerText) && /sistemas de columna seca/.test(lowerText)) {
+        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Hidrantes y Sistemas de columna seca.", fragment);
+      }
+      if (/extintores de incendio/.test(lowerText) && /bocas de incendio/.test(lowerText)) {
+        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Extintores y BIE.", fragment);
+      }
+    }
+  });
+
+  if (!containsPreviewInstructionsText(previewMarkdown)) {
+    pushProblem("preview_markdown_missing_instructions", "preview.md no contiene las instrucciones fijas para revisiÃ³n con IA.");
+  }
+  if (containsPreviewInstructionsText(previewJson)) {
+    pushProblem("preview_json_contains_instructions", "preview.json contiene instrucciones del preview.md.");
+  }
+
+  return {
+    apto: problems.length === 0,
+    problems,
+    nonLiteralFragments,
+    checks: {
+      previewMarkdownHasInstructions: containsPreviewInstructionsText(previewMarkdown),
+      previewJsonHasInstructions: containsPreviewInstructionsText(previewJson),
+      instructionFragmentsCount: problems.filter((problem) => problem.kind === "preview_instructions_in_fragment").length,
+      emptyOrDecorativeCount: problems.filter((problem) => problem.kind === "empty_or_decorative_fragment").length,
+      mixedAnexoIICount: problems.filter((problem) => problem.kind === "mixed_anexo_ii_systems").length,
+      artificialSlashLabelCount: problems.filter((problem) => problem.kind === "mixed_source_label").length,
+      tableContextInTextCount: problems.filter((problem) => problem.kind === "table_context_in_text").length,
+      nonLiteralCount: nonLiteralFragments.length,
+    },
+  };
+}
+
+function printDryRunIntegrity(result) {
+  console.log("\n[BOE][DRY_RUN][INTEGRIDAD]");
+  console.log(`Resultado: ${result.apto ? "APTO PARA SUBIR" : "NO APTO PARA SUBIR"}`);
+  console.log(`preview.md contiene instrucciones: ${result.checks.previewMarkdownHasInstructions ? "sÃ­" : "no"}`);
+  console.log(`preview.json contiene instrucciones: ${result.checks.previewJsonHasInstructions ? "sÃ­" : "no"}`);
+  console.log(`Fragmentos con instrucciones del preview: ${result.checks.instructionFragmentsCount}`);
+  console.log(`Fragmentos vacÃ­os/decorativos: ${result.checks.emptyOrDecorativeCount}`);
+  console.log(`Mezclas evidentes en ANEXO II: ${result.checks.mixedAnexoIICount}`);
+  console.log(`source_label con '/' de fusiÃ³n artificial: ${result.checks.artificialSlashLabelCount}`);
+  console.log(`Contexto de tabla dentro de texto operativo ANEXO II: ${result.checks.tableContextInTextCount}`);
+  console.log(`Fragmentos no literales/contiguos detectados: ${result.checks.nonLiteralCount}`);
+
+  if (result.problems.length > 0) {
+    console.log("Problemas detectados:");
+    result.problems.slice(0, 12).forEach((problem) => {
+      const fragmentInfo = problem.orden ? ` Fragmento ${problem.orden} (${problem.source_label})` : "";
+      console.log(`- [${problem.kind}]${fragmentInfo}: ${problem.message}`);
+    });
+    if (result.problems.length > 12) {
+      console.log(`- ... ${result.problems.length - 12} problema(s) adicional(es).`);
+    }
+  }
 }
 
 async function readPreviewJson(boeId) {
@@ -724,6 +1334,10 @@ function validatePreviewShape(preview, expectedBoeId) {
       textHashes.set(fragment.texto, index);
     }
   });
+
+  if (preview?.integrity && preview.integrity.apto === false) {
+    errors.push("El preview indica que el dry-run no fue APTO PARA SUBIR (fallos de integridad).");
+  }
 
   return {
     errors,
@@ -917,6 +1531,20 @@ function buildNormasPartesPayloads({ preview, normaPayload }) {
   }));
 }
 
+function buildEmbeddingInput(fragment) {
+  const context = [
+    fragment.seccion,
+    fragment.articulo,
+    fragment.tipo,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join("\n");
+
+  return context ? `${context}\n${fragment.texto}` : fragment.texto;
+}
+
 function countPreparedFragments(partesPayloads) {
   return {
     total: partesPayloads.length,
@@ -1012,7 +1640,7 @@ async function executeUploadMode({ supabase, openai, preview, validation, normaP
     for (let i = 0; i < partesPayloads.length; i += EMBEDDING_BATCH_SIZE) {
       const batch = partesPayloads.slice(i, i + EMBEDDING_BATCH_SIZE);
       const textsToVectorize = batch.map((fragment) => (
-        !fragment.es_indice && fragment.texto.length >= 20 ? fragment.texto : null
+        !fragment.es_indice && fragment.texto.length >= 20 ? buildEmbeddingInput(fragment) : null
       ));
       const validTexts = textsToVectorize.filter((text) => text !== null);
       let batchEmbeddings = [];
@@ -1077,12 +1705,9 @@ async function executeUploadMode({ supabase, openai, preview, validation, normaP
 }
 
 async function confirmUploadPreflightMode(boeId) {
-  const codigo = (getArg("codigo") || "").trim();
   const writePlan = hasFlag("write-plan");
   const executeUpload = hasFlag("execute-upload");
-  if (!codigo) {
-    throw new Error("Falta argumento obligatorio --codigo para el preflight de publicación.");
-  }
+  const replaceExisting = hasFlag("replace-existing");
 
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -1101,6 +1726,7 @@ async function confirmUploadPreflightMode(boeId) {
   }
 
   const metadata = preview.metadata;
+  const codigo = (getArg("codigo") || metadata.codigo_sugerido || boeId).trim();
   const stats = preview.stats || {};
   const documentHash = previewDocumentHash(preview);
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -1113,7 +1739,26 @@ async function confirmUploadPreflightMode(boeId) {
   });
 
   const hasDuplicates = duplicateGroups.length > 0;
-  const action = hasDuplicates ? "ABORTAR_DUPLICADO" : "CREAR_NUEVA_NORMA";
+  
+  const allDuplicateRows = new Map();
+  if (hasDuplicates) {
+    for (const group of duplicateGroups) {
+      for (const row of group.rows) {
+        allDuplicateRows.set(row.id, row);
+      }
+    }
+  }
+
+  let action = hasDuplicates ? "ABORTAR_DUPLICADO" : "CREAR_NUEVA_NORMA";
+  if (hasDuplicates && replaceExisting) {
+    if (allDuplicateRows.size === 1) {
+      action = "REEMPLAZAR_EXISTENTE";
+    } else {
+      action = "ABORTAR_MULTIPLES_EXISTENTES";
+    }
+  }
+
+  const targetDuplicateId = action === "REEMPLAZAR_EXISTENTE" ? Array.from(allDuplicateRows.keys())[0] : null;
 
   console.log("\n[BOE][PRE_FLIGHT] Plan de publicación controlada");
   console.log(`Archivo preview: ${outputPath}`);
@@ -1129,19 +1774,38 @@ async function confirmUploadPreflightMode(boeId) {
   console.log(`Fragmento máximo: ${stats.fragmento_mas_largo ?? validation.stats.maxLength} caracteres`);
   printDuplicateSummary(duplicateGroups);
   console.log(`Acción futura recomendada: ${action}`);
+  if (action === "REEMPLAZAR_EXISTENTE") {
+    console.log(`- Se reemplazará la norma_id: ${targetDuplicateId}`);
+  }
   if (executeUpload) {
     console.log("[BOE][PRE_FLIGHT] Validado para ejecuciÃ³n real solicitada con --confirm-upload --execute-upload.");
   } else {
     console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
   }
 
-  if (hasDuplicates) {
-    console.log("Acción: ABORTAR_DUPLICADO");
+  if (action.startsWith("ABORTAR")) {
+    console.log(`Acción: ${action}`);
     process.exitCode = 1;
     return;
   }
 
   if (executeUpload) {
+    if (action === "REEMPLAZAR_EXISTENTE" && targetDuplicateId) {
+      console.log(`\n[BOE][REPLACE] Borrando fragmentos de norma_id=${targetDuplicateId}`);
+      const { error: delPartesError } = await supabase
+        .from("normas_partes")
+        .delete()
+        .eq("norma_id", targetDuplicateId);
+      if (delPartesError) throw new Error(`Error borrando partes antiguas: ${delPartesError.message}`);
+      
+      console.log(`[BOE][REPLACE] Borrando norma_id=${targetDuplicateId}`);
+      const { error: delNormaError } = await supabase
+        .from("normas")
+        .delete()
+        .eq("id", targetDuplicateId);
+      if (delNormaError) throw new Error(`Error borrando norma antigua: ${delNormaError.message}`);
+    }
+
     const normaPayload = buildNormaPayload({ preview, codigo, documentHash });
     const partesPayloads = buildNormasPartesPayloads({ preview, normaPayload });
     await executeUploadMode({
@@ -1212,14 +1876,22 @@ async function main() {
     warnings,
     fragments,
   };
+  const integrity = validateDryRunIntegrity({ preview, xml });
+  preview.integrity = integrity;
 
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   const outputPath = path.join(OUTPUT_DIR, `boe-preview-${boeId}.json`);
   await fs.writeFile(outputPath, JSON.stringify(preview, null, 2), "utf8");
+  const { markdownPath } = await writeReviewPreviewFiles({ boeId, preview });
 
   printSummary({ metadata, stats, warnings, fragments });
+  printDryRunIntegrity(integrity);
   console.log(`\n[BOE][DRY_RUN] JSON guardado en ${outputPath}`);
+  console.log(`Preview Markdown guardado en: ${markdownPath}`);
   console.log("[BOE][DRY_RUN] No se ha tocado Supabase ni se han generado embeddings.");
+  if (!integrity.apto) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

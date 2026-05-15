@@ -403,10 +403,12 @@ export async function POST(req: Request) {
         const qNormalized = normalizeForSearch(question);
         const anexoTopicTerms = [
             "mantenimiento", "revision", "revisiones", "trimestral", "anual", "cinco anos",
-            "deteccion", "alarma", "extintores", "extintor", "bie", "bocas de incendio"
+            "deteccion", "alarma", "extintores", "extintor", "bie", "bocas de incendio", "hidrantes"
         ];
-        const isTechnicalAnexoQuery = anexoTopicTerms.some(term => qNormalized.includes(term));
+        const isAnexoIIQuery = /\banexo\s+ii\b/.test(qNormalized);
+        const isTechnicalAnexoQuery = isAnexoIIQuery || anexoTopicTerms.some(term => qNormalized.includes(term));
         const isExtintorQuery = qNormalized.includes("extintor");
+        const isHidrantesQuery = qNormalized.includes("hidrante");
         const isDetectionMaintenanceQuery =
             (qNormalized.includes("mantenimiento") || qNormalized.includes("revision") || qNormalized.includes("revisiones")) &&
             (qNormalized.includes("deteccion") || qNormalized.includes("alarma"));
@@ -417,7 +419,11 @@ export async function POST(req: Request) {
         const validNormaId = typeof parsedNormaId === "number" && Number.isInteger(parsedNormaId) ? parsedNormaId : null;
 
         // --- Article-number detection (hoisted BEFORE RPC) ---
-        const articuloMencionadoMatch = question.match(
+        const questionForArticleDetection = String(question || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+        const articuloMencionadoMatch = questionForArticleDetection.match(/\bart\D{0,12}(\d+[\w.-]*)/i) || questionForArticleDetection.match(
             /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
         );
         const articuloMencionado = articuloMencionadoMatch
@@ -705,8 +711,10 @@ export async function POST(req: Request) {
         if (isTechnicalAnexoQuery && !articuloMencionado) {
             const scoreAnexoKeyword = (item: any) => {
                 const seccion = normalizeForSearch(item.seccion);
+                const sourceLabel = normalizeForSearch(item.source_label || buildSourceLabel(item));
                 const texto = normalizeForSearch(item.texto || item.content);
                 const tipo = normalizeForSearch(item.tipo);
+                const labelText = `${seccion} ${sourceLabel}`;
                 let boost = 0;
 
                 if (tipo.includes("anexo")) boost += 0.25;
@@ -715,6 +723,17 @@ export async function POST(req: Request) {
                 if (/\bap\.\s*\d+/i.test(String(item.seccion || ""))) boost -= 0.60;
                 if (String(item.texto || item.content || "").length < 500) boost -= 0.30;
                 if ((isExtintorQuery || isDetectionMaintenanceQuery) && (seccion.includes("anexo iii") || seccion.includes("anexo iv"))) boost -= 0.90;
+
+                if (isAnexoIIQuery) {
+                    if (labelText.includes("anexo ii")) boost += 2.40;
+                    if (labelText.includes("anexo i") && !labelText.includes("anexo ii")) boost -= 1.40;
+                    if (labelText.includes("apendice")) boost -= 0.80;
+                }
+                if (isAnexoIIQuery && isHidrantesQuery) {
+                    if (labelText.includes("anexo ii") && labelText.includes("hidrante")) boost += 2.20;
+                    if (texto.includes("hidrante")) boost += 0.35;
+                    if (!labelText.includes("hidrante")) boost -= 0.45;
+                }
 
                 if (isExtintorQuery && seccion.includes("anexo i") && seccion.includes("extintores de incendio")) boost += 2.50;
                 if (isExtintorQuery && texto.includes("extintores de incendio")) boost += 0.55;
@@ -1041,7 +1060,18 @@ No mezclar ambos en un mismo párrafo.${periodicityInstruction}`,
             }
         }
 
-        const topKData = validData.slice(0, safeK);
+        const topKData = isAnexoIIQuery && !articuloMencionado
+            ? [
+                ...validData.filter((item: any) => {
+                    const labelText = normalizeForSearch(`${item.seccion || ""} ${item.source_label || buildSourceLabel(item)}`);
+                    return labelText.includes("anexo ii");
+                }).slice(0, 8),
+                ...validData.filter((item: any) => {
+                    const labelText = normalizeForSearch(`${item.seccion || ""} ${item.source_label || buildSourceLabel(item)}`);
+                    return !labelText.includes("anexo ii");
+                }).slice(0, 3),
+            ]
+            : validData.slice(0, safeK);
 
         const cosineSimilarity = (vecA: number[], vecB: number[]) => {
             let dotProduct = 0,
