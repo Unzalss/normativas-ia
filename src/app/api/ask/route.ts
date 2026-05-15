@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
@@ -5,11 +6,51 @@ import { createClient } from "@supabase/supabase-js";
 const K_GLOBAL = 12;
 const MAX_NORMAS = 50;
 
+type AskDebugTiming = {
+    authMs: number;
+    normaDetectionMs: number;
+    embeddingMs: number;
+    directFetchMs: number;
+    rpcMs: number;
+    filterRankMs: number;
+    contextMs: number;
+    openaiMs: number;
+    highlightsMs: number;
+    totalMs: number;
+    contextChars: number;
+    contextGroupsCount: number;
+    validDataCount: number;
+    sourcesCount: number;
+};
+
+const nowMs = () => Date.now();
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
     try {
+        const startedAt = nowMs();
+        const debugTiming: AskDebugTiming = {
+            authMs: 0,
+            normaDetectionMs: 0,
+            embeddingMs: 0,
+            directFetchMs: 0,
+            rpcMs: 0,
+            filterRankMs: 0,
+            contextMs: 0,
+            openaiMs: 0,
+            highlightsMs: 0,
+            totalMs: 0,
+            contextChars: 0,
+            contextGroupsCount: 0,
+            validDataCount: 0,
+            sourcesCount: 0,
+        };
+        const finalizeDebugTiming = () => {
+            debugTiming.totalMs = nowMs() - startedAt;
+            return debugTiming;
+        };
         const xDebug = req.headers.get("x-debug") === "1";
         const payload = await req.json();
         const { question, normaId, norma_id, normaCodigo = null, k = 12 } = payload;
@@ -28,13 +69,16 @@ export async function POST(req: Request) {
         let userId: string | null = null;
 
         if (authHeader) {
+            const authStartedAt = nowMs();
             const token = authHeader.replace("Bearer ", "");
             const {
                 data: { user },
             } = await supabase.auth.getUser(token);
             if (user) userId = user.id;
+            debugTiming.authMs = nowMs() - authStartedAt;
         }
 
+        const normaDetectionStartedAt = nowMs();
         const normalizeNormaId = (value: any): number | null => {
             if (value === null || value === undefined) return null;
             const s = String(value).trim();
@@ -256,6 +300,7 @@ export async function POST(req: Request) {
             }
         }
         // --------------------------------------------------------------------------
+        debugTiming.normaDetectionMs = nowMs() - normaDetectionStartedAt;
 
         const debugInfo: any = {
             normaCodigoRecibido: normaCodigo,
@@ -272,11 +317,13 @@ export async function POST(req: Request) {
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+        const embeddingStartedAt = nowMs();
         const embeddingRes = await openai.embeddings.create({
             model: "text-embedding-3-small",
             input: question,
             dimensions: 1536,
         });
+        debugTiming.embeddingMs = nowMs() - embeddingStartedAt;
 
         const q_embedding = embeddingRes.data[0].embedding;
 
@@ -305,6 +352,46 @@ export async function POST(req: Request) {
                 return rawNumber ? `Artículo ${rawNumber}` : String(item.articulo || item.seccion || "Artículo").trim();
             }
             return String(item.seccion || item.articulo || item.tipo || "Fragmento normativo").trim();
+        };
+
+        const refineSourceLabel = (item: any, baseLabel: string) => {
+            const sectionText = normalizeForSearch(item.seccion);
+            const typeText = normalizeForSearch(item.tipo);
+            const baseLabelText = normalizeForSearch(baseLabel);
+            const fragmentText = normalizeForSearch(item.texto || item.content);
+            const hasAnexoII =
+                /\banexo\s+ii(?:\b|[\s-])/.test(sectionText) ||
+                /\banexo\s+ii(?:\b|[\s-])/.test(baseLabelText);
+            const hasAnexoI =
+                /\banexo\s+i(?:\b|[\s-])/.test(sectionText) ||
+                /\banexo\s+i(?:\b|[\s-])/.test(baseLabelText);
+            const hasForbiddenStructure =
+                hasAnexoI ||
+                sectionText.includes("apendice") ||
+                baseLabelText.includes("apendice") ||
+                typeText.includes("art") ||
+                typeText.includes("capitulo") ||
+                typeText.includes("disposicion") ||
+                sectionText.includes("articulo") ||
+                sectionText.includes("capitulo") ||
+                sectionText.includes("disposicion") ||
+                baseLabelText.includes("articulo") ||
+                baseLabelText.includes("capitulo") ||
+                baseLabelText.includes("disposicion");
+            const hasExtintoresHeading = fragmentText.includes("extintores de incendio");
+            const hasMaintenanceCue =
+                fragmentText.includes("programa de mantenimiento trimestral") ||
+                fragmentText.includes("programa de mantenimiento anual") ||
+                fragmentText.includes("mantenimiento trimestral") ||
+                fragmentText.includes("mantenimiento anual") ||
+                fragmentText.includes("retimbrado") ||
+                fragmentText.includes("timbrado");
+
+            if (isExtintorQuery && hasAnexoII && !hasForbiddenStructure && hasExtintoresHeading && hasMaintenanceCue) {
+                return "ANEXO II - Extintores de incendio";
+            }
+
+            return baseLabel;
         };
 
         // --- Debug: full detection trace ---
@@ -463,6 +550,7 @@ export async function POST(req: Request) {
             const explicitArtRegex = new RegExp(`\\\\bart(?:[íi]culo|iculo|icul|ic|\\\\.?)?\\\\s*${safeArtNum}\\\\b`, 'i');
 
             // Búsqueda nominal directa estricta en base de datos.
+            const directFetchStartedAt = nowMs();
             const { data: exactData, error: exactError } = await supabase
                 .from("normas_partes")
                 .select("id, norma_id, seccion, articulo, article_number, texto, tipo, orden")
@@ -470,15 +558,18 @@ export async function POST(req: Request) {
                 .eq("article_number", artNum)
                 .order('orden', { ascending: true })
                 .limit(50);
+            debugTiming.directFetchMs += nowMs() - directFetchStartedAt;
 
             console.log(`\\n[DIAG-DIRECT-FETCH] Buscando artículo ${artNum} en norma ${validNormaId}`);
             if (exactError) console.error(`[DIAG-DIRECT-FETCH] Error DB:`, exactError.message);
 
             if (exactData && exactData.length > 0) {
                 console.log(`[DIAG-DIRECT-FETCH] Filas devueltas por consulta directa: ${exactData.length}`);
-                exactData.forEach(r => {
-                    console.log(`  -> id: ${r.id}, article_number: "${r.article_number}", articulo: "${r.articulo}", seccion: "${r.seccion}"`);
-                });
+                if (xDebug) {
+                    exactData.forEach(r => {
+                        console.log(`  -> id: ${r.id}, article_number: "${r.article_number}", articulo: "${r.articulo}", seccion: "${r.seccion}"`);
+                    });
+                }
 
                 const isArticleStrictMatch = (f: any) => {
                     const sec = String(f.seccion || "");
@@ -518,6 +609,7 @@ export async function POST(req: Request) {
         }
 
         if (!usedDirectFetch) {
+            const rpcStartedAt = nowMs();
             const rpcParams: any = {
                 q_embedding,
                 q_text: question,
@@ -553,9 +645,10 @@ export async function POST(req: Request) {
             const { data, error } = await rpcQuery;
             rawData = data || [];
             rpcError = error;
+            debugTiming.rpcMs = nowMs() - rpcStartedAt;
             console.log(`[ASK] Filas brutas de RPC: ${rawData.length}`);
             
-            if (articuloMencionado) {
+            if (xDebug && articuloMencionado) {
                 console.log("\n[DIAG-ARTICLE] ==== INICIO DE DIAGNÓSTICO DE ARTÍCULO ====");
                 console.log(`[DIAG-ARTICLE] Pregunta Original: "${question}"`);
                 console.log(`[DIAG-ARTICLE] Norma (detectedNormaCodigo: ${detectedNormaCodigo}, parsedNormaId: ${parsedNormaId}, validNormaId: ${validNormaId})`);
@@ -569,6 +662,10 @@ export async function POST(req: Request) {
             }
         }
 
+        if (usedDirectFetch) {
+            debugTiming.rpcMs = 0;
+        }
+
         console.log("=== RESULT LOG ===");
         console.log("query:", question);
         console.log("parsedNormaId:", parsedNormaId);
@@ -578,6 +675,7 @@ export async function POST(req: Request) {
         if (rpcError) {
             console.error("Error RPC vectorial/híbrido:", rpcError.message, rpcError.details);
             debugInfo.rpcParamErrors = rpcError;
+            debugInfo.debugTiming = finalizeDebugTiming();
             return NextResponse.json(
                 {
                     error: `Supabase RPC Error: ${rpcError.message} - ${rpcError.details}`,
@@ -589,17 +687,20 @@ export async function POST(req: Request) {
 
         debugInfo.rowsLength = rawData.length;
 
+        const filterRankStartedAt = nowMs();
         const validData = rawData.filter((item: any) =>
             isValidFragment(item.content || item.texto || "")
         );
         validData.forEach((item: any) => {
-            item.source_label = buildSourceLabel(item);
+            item.source_label = refineSourceLabel(item, buildSourceLabel(item));
         });
 
-        console.log("=== DEBUG VALID DATA ===");
-        console.log("validData_count:", validData?.length);
-        console.log("validData_first_3:", validData?.slice(0,3));
-        console.log(`[ASK] Fragmentos válidos tras filtro: ${validData.length}`);
+        if (xDebug) {
+            console.log("=== DEBUG VALID DATA ===");
+            console.log("validData_count:", validData?.length);
+            console.log("validData_first_3:", validData?.slice(0,3));
+            console.log(`[ASK] Fragmentos válidos tras filtro: ${validData.length}`);
+        }
 
         if (isTechnicalAnexoQuery && !articuloMencionado) {
             const scoreAnexoKeyword = (item: any) => {
@@ -662,6 +763,7 @@ export async function POST(req: Request) {
             validData.length >= 2 && bestScore >= 0.55 && (strongCount >= 1 || mediumCount >= 2);
 
         debugInfo.hasEnoughEvidence = hasEnoughEvidence;
+        debugTiming.validDataCount = validData.length;
 
         const articuloFoundInFragments = (articuloRegex instanceof RegExp)
             ? validData.some((f: any) => articuloRegex.test(String(f.seccion || "")))
@@ -684,6 +786,8 @@ export async function POST(req: Request) {
 
         if (!validData.length || (!hasEnoughEvidence && !bypassEvidence)) {
             console.log(`[ASK] → Devolviendo "No consta" (validData.length=${validData.length})`);
+            debugTiming.filterRankMs = nowMs() - filterRankStartedAt;
+            debugInfo.debugTiming = finalizeDebugTiming();
             return NextResponse.json({
                 ok: true,
                 answer: "No consta en las normas consultadas.",
@@ -761,6 +865,7 @@ export async function POST(req: Request) {
             }
         }
         // --------------------------------------------------------------------------
+        debugTiming.filterRankMs = nowMs() - filterRankStartedAt;
 
         const isLiteralMatch =
             /(qué\s+dice|texto\s+literal|transcribe|copia)\s+.*(art(?:í|i)culo|art\.)\s*\d+/i.test(
@@ -773,34 +878,69 @@ export async function POST(req: Request) {
 
         if (!isLiteralMatch) {
             try {
+                const contextStartedAt = nowMs();
                 // --- Reconstruct complete articles from fragments -------------------
                 // seccion values look like "Artículo 5 [Bloque 3]".
                 // Strip the internal block marker to get the base article reference.
                 const baseArticle = (frag: any) =>
                     buildSourceLabel(frag).replace(/\s*\[Bloque\s+\d+\]/gi, "").trim();
+                const displayArticle = (frag: any) =>
+                    String(frag.source_label || buildSourceLabel(frag)).replace(/\s*\[Bloque\s+\d+\]/gi, "").trim();
 
                 // Group all fragments (not just the top slice) by their base article key
-                const articleMap = new Map<string, any[]>();
+                const articleMap = new Map<string, { label: string; frags: any[] }>();
                 for (const frag of validData) {
                     const key = baseArticle(frag) || `__frag_${frag.id}`;
-                    if (!articleMap.has(key)) articleMap.set(key, []);
-                    articleMap.get(key)!.push(frag);
+                    if (!articleMap.has(key)) articleMap.set(key, { label: displayArticle(frag) || key, frags: [] });
+                    articleMap.get(key)!.frags.push(frag);
                 }
 
                 // Sort each group by id (ascending) so text reads in document order
-                for (const frags of articleMap.values()) {
-                    frags.sort((a: any, b: any) => (a.id ?? 0) - (b.id ?? 0));
+                for (const group of articleMap.values()) {
+                    group.frags.sort((a: any, b: any) => (a.id ?? 0) - (b.id ?? 0));
                 }
 
-                // Build context from reconstructed articles, capped at 12 entries
-                // Each entry = one logical article (possibly multiple fragments joined)
-                const contextGroups = Array.from(articleMap.entries()).slice(0, 12);
-                console.log("[ASK][CONTEXT] Fragmentos/grupos enviados al modelo:");
-                contextGroups.slice(0, 10).forEach(([label, frags], i) => {
-                    const first = frags[0] || {};
-                    const snippet = String(first.texto || first.content || "").substring(0, 180).replace(/\n/g, " ");
-                    console.log(`[ASK][CONTEXT][${i + 1}] id=${first.id ?? "N/A"} | tipo=${first.tipo || "N/A"} | seccion="${first.seccion || label}" | source_label="${first.source_label || label}" | score=${getScore(first).toFixed(3)} | texto="${snippet}"`);
-                });
+                // Build context from reconstructed articles without changing retrieval/sources.
+                const broadOrComparativeQuery = [
+                    "obligaciones",
+                    "requisitos",
+                    "diferencias",
+                    "comparar",
+                    "comparacion",
+                    "aplica",
+                    "normativa aplicable",
+                    "que establece",
+                ].some((term) => qNormalized.includes(term));
+                const maxContextGroups = broadOrComparativeQuery ? 10 : 8;
+                const maxContextChars = broadOrComparativeQuery ? 18000 : 14000;
+                const candidateContextGroups = Array.from(articleMap.values()).map((group) => [group.label, group.frags] as [string, any[]]);
+                const contextGroups: Array<[string, any[]]> = [];
+                let contextCharsBudget = 0;
+
+                for (const [label, frags] of candidateContextGroups) {
+                    if (contextGroups.length >= maxContextGroups) break;
+
+                    const fullText = frags
+                        .map((f: any) => f.texto || f.content || "")
+                        .join("\n");
+                    const nextBlock = `[${contextGroups.length + 1}] ${label}:\n${fullText}`;
+                    const nextChars = nextBlock.length + (contextGroups.length > 0 ? 2 : 0);
+
+                    if (contextGroups.length > 0 && contextCharsBudget + nextChars > maxContextChars) {
+                        break;
+                    }
+
+                    contextGroups.push([label, frags]);
+                    contextCharsBudget += nextChars;
+                }
+                if (xDebug) {
+                    console.log("[ASK][CONTEXT] Fragmentos/grupos enviados al modelo:");
+                    contextGroups.slice(0, 10).forEach(([label, frags], i) => {
+                        const first = frags[0] || {};
+                        const snippet = String(first.texto || first.content || "").substring(0, 180).replace(/\n/g, " ");
+                        console.log(`[ASK][CONTEXT][${i + 1}] id=${first.id ?? "N/A"} | tipo=${first.tipo || "N/A"} | seccion="${first.seccion || label}" | source_label="${first.source_label || label}" | score=${getScore(first).toFixed(3)} | texto="${snippet}"`);
+                    });
+                }
 
                 const reconstructedArticles = contextGroups
                     .map(([label, frags], i) => {
@@ -811,7 +951,29 @@ export async function POST(req: Request) {
                     });
 
                 const context = reconstructedArticles.join("\n\n");
+                debugTiming.contextChars = context.length;
+                debugTiming.contextGroupsCount = contextGroups.length;
+                debugTiming.contextMs = nowMs() - contextStartedAt;
 
+                const isPeriodicityOrMaintenanceQuery = [
+                    "cada cuanto",
+                    "periodicidad",
+                    "revisar",
+                    "revisarse",
+                    "revision",
+                    "mantenimiento",
+                    "inspeccion",
+                    "trimestral",
+                    "anual",
+                    "quinquenal",
+                    "timbrado",
+                    "retimbrado",
+                ].some((term) => qNormalized.includes(term));
+                const periodicityInstruction = isPeriodicityOrMaintenanceQuery
+                    ? `\n\nSi en las fuentes aparecen varias periodicidades distintas, debes mencionarlas todas. No reduzcas la respuesta a una sola periodicidad. Distingue claramente entre verificaciones/revisiones trimestrales, mantenimiento anual, inspecciones, timbrado y retimbrado cuando aparezcan en las fuentes. Si una periodicidad corresponde a otro equipo o sistema distinto, no la mezcles.`
+                    : "";
+
+                const openaiStartedAt = nowMs();
                 const completion = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     messages: [
@@ -853,18 +1015,20 @@ Cuando la pregunta implique comparar dos o más casos (por ejemplo, mantenimient
 - Mantenimiento anual:
   ...
 
-No mezclar ambos en un mismo párrafo.`,
+No mezclar ambos en un mismo párrafo.${periodicityInstruction}`,
                         },
                         { role: "user", content: `PREGUNTA: ${question}\n\nCONTEXTO:\n${context}` },
                     ],
                     max_tokens: 500,
                     temperature: 0,
                 });
+                debugTiming.openaiMs = nowMs() - openaiStartedAt;
 
                 answer = completion.choices[0].message.content || "";
             } catch (openaiError: any) {
                 console.error("OpenAI RAG error:", openaiError);
                 debugInfo.openaiError = openaiError?.message;
+                debugInfo.debugTiming = finalizeDebugTiming();
 
                 const respPayload: any = {
                     ok: true,
@@ -895,10 +1059,11 @@ No mezclar ambos en un mismo párrafo.`,
         };
 
         if (!isLiteralMatch) {
+            const highlightsStartedAt = nowMs();
             try {
-                for (const item of topKData) {
+                await Promise.all(topKData.slice(0, 4).map(async (item) => {
                     const textBase = item.texto || item.content || "";
-                    if (!textBase) continue;
+                    if (!textBase) return;
 
                     const sentences = textBase
                         .split(/(?:\.|\n)+/)
@@ -906,7 +1071,7 @@ No mezclar ambos en un mismo párrafo.`,
                         .filter((s: string) => s.length > 20)
                         .slice(0, 8);
 
-                    if (sentences.length === 0) continue;
+                    if (sentences.length === 0) return;
 
                     const embRes = await openai.embeddings.create({
                         model: "text-embedding-3-small",
@@ -929,9 +1094,11 @@ No mezclar ambos en un mismo párrafo.`,
                     if (bestSentence) {
                         item.highlight = bestSentence + (bestSentence.endsWith(".") ? "" : "...");
                     }
-                }
+                }));
             } catch (highlightErr) {
                 console.error("Highlight calculation error:", highlightErr);
+            } finally {
+                debugTiming.highlightsMs = nowMs() - highlightsStartedAt;
             }
         }
 
@@ -1027,23 +1194,30 @@ No mezclar ambos en un mismo párrafo.`,
             okPayload.highlights = [];
         }
 
-        if (articuloMencionado) {
+        if (xDebug && articuloMencionado) {
             console.log(`\n[DIAG-ARTICLE] ==== RESULTADO FINAL ====`);
             console.log(`[DIAG-ARTICLE] validData final length: ${validData.length}`);
             console.log(`[DIAG-ARTICLE] processedData final length: ${processedData.length}`);
             console.log(`[DIAG-ARTICLE] answer length: ${finalAnswer.length}, snippet: "${finalAnswer.substring(0, 50)}..."`);
         }
 
-        console.log("=== DEBUG SOURCES ===");
-        console.log("sources_count:", finalDataArr?.length);
-        console.log("sources:", finalDataArr);
+        debugTiming.sourcesCount = finalDataArr?.length ?? 0;
+        debugInfo.debugTiming = finalizeDebugTiming();
+
+        if (xDebug) {
+            console.log("=== DEBUG SOURCES ===");
+            console.log("sources_count:", finalDataArr?.length);
+            console.log("sources:", finalDataArr);
+        }
 
         if (xDebug) okPayload.debug = debugInfo;
 
-        console.log("=== DEBUG FINAL RESPONSE FIXED ===");
-        console.log("final_response_keys:", Object.keys(okPayload || {}));
-        console.log("final_response_sources_count:", okPayload?.sources?.length ?? null);
-        console.log("final_response_sources:", okPayload?.sources ?? null);
+        if (xDebug) {
+            console.log("=== DEBUG FINAL RESPONSE FIXED ===");
+            console.log("final_response_keys:", Object.keys(okPayload || {}));
+            console.log("final_response_sources_count:", okPayload?.sources?.length ?? null);
+            console.log("final_response_sources:", okPayload?.sources ?? null);
+        }
 
         return NextResponse.json(okPayload);
     } catch (err: any) {
