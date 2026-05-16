@@ -440,11 +440,33 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                         return text.match(regex)?.[1]?.trim() ?? '';
                     };
 
+                    const collapseRepeatedText = (value: string) => {
+                        const trimmed = value.trim();
+                        if (!trimmed) return trimmed;
+
+                        const normalize = (part: string) => part.replace(/\s+/g, ' ').trim();
+                        const midpoint = Math.floor(trimmed.length / 2);
+
+                        for (let offset = -20; offset <= 20; offset += 1) {
+                            const cut = midpoint + offset;
+                            if (cut <= 0 || cut >= trimmed.length) continue;
+
+                            const left = trimmed.slice(0, cut).trim();
+                            const right = trimmed.slice(cut).trim();
+                            if (left && normalize(left) === normalize(right)) return left;
+                        }
+
+                        return trimmed;
+                    };
+
                     const respuestaBreve      = extract('Respuesta breve');
                     const fundamentoNormativo = extract('Fundamento normativo');
                     const cita               = extract('Cita');
                     const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
-                    const criterioPractico   = respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
+                    const criterioPracticoRaw = respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
+                    const criterioPractico   = collapseRepeatedText(criterioPracticoRaw);
+                    const shouldShowRespuestaBreve = respuestaBreve && collapseRepeatedText(respuestaBreve) !== criterioPractico;
+                    const shouldShowUnstructuredCriterio = criterioPractico && criterioPractico.trim() !== text.trim();
 
 
 
@@ -539,7 +561,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                         <p className={styles.practicalText}>{criterioPractico}</p>
                                                     </div>
                                                 )}
-                                                {respuestaBreve && (
+                                                {shouldShowRespuestaBreve && (
                                                     <div className={styles.responseBlock}>
                                                         <div className={styles.blockLabel}>Respuesta breve</div>
                                                         <p className={styles.blockText}>{respuestaBreve}</p>
@@ -562,7 +584,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                             </div>
                                         ) : (
                                             <>
-                                                {criterioPractico && (
+                                                {shouldShowUnstructuredCriterio && (
                                                     <div className={styles.practicalBlock}>
                                                         <div className={styles.practicalLabel}>Criterio práctico</div>
                                                         <p className={styles.practicalText}>{criterioPractico}</p>
