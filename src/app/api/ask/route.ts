@@ -423,11 +423,11 @@ export async function POST(req: Request) {
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
             .toLowerCase();
-        const articuloMencionadoMatch = questionForArticleDetection.match(/\bart\D{0,12}(\d+[\w.-]*)/i) || questionForArticleDetection.match(
-            /art(?:í|i)culo\s+(\d+[\w.-]*)|art\.\s*(\d+[\w.-]*)|art\s+(\d+[\w.-]*)/i
+        const articuloMencionadoMatch = questionForArticleDetection.match(
+            /\bart\D{0,12}(\d+)(?:[\s.-]+(bis|ter|quater))?\b/i
         );
         const articuloMencionado = articuloMencionadoMatch
-            ? (articuloMencionadoMatch[1] || articuloMencionadoMatch[2] || articuloMencionadoMatch[3]).trim()
+            ? `${articuloMencionadoMatch[1]}${articuloMencionadoMatch[2] ? ` ${articuloMencionadoMatch[2]}` : ""}`.trim()
             : null;
 
         let rawData: any[] = [];
@@ -435,7 +435,7 @@ export async function POST(req: Request) {
         let usedDirectFetch = false;
 
         const articuloRegex: RegExp | null = articuloMencionado
-            ? new RegExp(`art[íi]?c?\\\\.?\\\\s*${articuloMencionado.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, "i")
+            ? new RegExp(`art(?:[íi]culo|iculo|\\.?)?\\s*${articuloMencionado.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i")
             : null;
 
         const shouldUseDirectFetch = Boolean(validNormaId !== null && articuloMencionado);
@@ -446,10 +446,16 @@ export async function POST(req: Request) {
         });
 
         const normalizeArticleNumber = (value: any) => {
-            const raw = String(value || "").toLowerCase().trim();
-            const withoutArticlePrefix = raw.replace(/^art(?:ículo|iculo)?\.?\s*/i, "").trim();
-            const match = withoutArticlePrefix.match(/\d+[\w-]*/i);
-            return (match ? match[0] : withoutArticlePrefix).replace(/\.+$/g, "").trim();
+            const raw = String(value || "")
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .trim();
+            const withoutArticlePrefix = raw.replace(/^art(?:iculo)?\.?\s*/i, "").trim();
+            const match = withoutArticlePrefix.match(/^(\d+)(?:\s+(bis|ter|quater))?/i);
+            return (match ? `${match[1]}${match[2] ? ` ${match[2]}` : ""}` : withoutArticlePrefix)
+                .replace(/\.+$/g, "")
+                .trim();
         };
 
         const assembleExactArticleFragments = (fragments: any[], requestedArticleNumber: string | null) => {
