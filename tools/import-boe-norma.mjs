@@ -112,13 +112,14 @@ function normalizeTipo(raw) {
 }
 
 function articleNumberFrom(text) {
-  const match = String(text || "").match(/\bart(?:í|i)culo\s+(\d+)/i);
-  return match ? Number(match[1]) : null;
+  const match = String(text || "").match(/\bart(?:í|i)culo\s+(\d+)(?:\s+(bis|ter|quater))?\b/i);
+  if (!match) return null;
+  return match[2] ? `${match[1]} ${match[2].toLowerCase()}` : Number(match[1]);
 }
 
-function sourceLabel(tipo, seccion) {
+function sourceLabel(tipo, seccion, text = "") {
   if (tipo === "Artículo") {
-    const n = articleNumberFrom(seccion);
+    const n = articleNumberFrom(text) || articleNumberFrom(seccion);
     return n ? `Artículo ${n}` : seccion;
   }
   return seccion;
@@ -255,6 +256,13 @@ function textFromBloqueBody(body, title) {
   return `${title}\n${text}`.trim();
 }
 
+function removeDuplicatedArticleHeading(text) {
+  return String(text || "").replace(
+    /^\s*(Art(?:Ã­|í|i)culo\s+(\d+))\s+Art(?:Ã­|í|i)culo\s+\2\.\s*/i,
+    "Artículo $2. "
+  );
+}
+
 function selectLatestVersionBody(body) {
   const versions = [];
   const versionRegex = /<version\b(?<attrs>[^>]*)>(?<body>[\s\S]*?)<\/version>/gi;
@@ -316,7 +324,7 @@ function fragmentsFromStructuredXml(xml, warnings) {
       );
     }
 
-    const text = textFromBloqueBody(selectedVersion.body, titleAttr);
+    const text = removeDuplicatedArticleHeading(textFromBloqueBody(selectedVersion.body, titleAttr));
     if (text.length < 20) continue;
     if (!isSubmittableLegalBlock(text)) {
       warnings.push(`Bloque informativo BOE excluido de fragmentos jurídicos: ${text.slice(0, 140).replace(/\s+/g, " ")}`);
@@ -339,10 +347,10 @@ function fragmentsFromStructuredXml(xml, warnings) {
     fragments.push({
       tipo: fragmentTipo,
       seccion,
-      article_number: fragmentTipo === "Artículo" ? articleNumberFrom(seccion) || articleNumberFrom(text) : null,
+      article_number: fragmentTipo === "Artículo" ? articleNumberFrom(text) || articleNumberFrom(seccion) : null,
       orden: fragments.length + 1,
       texto: text,
-      source_label: sourceLabel(fragmentTipo, seccion),
+      source_label: sourceLabel(fragmentTipo, seccion, text),
       fuente_bloque_id: id,
       fuente_version_fecha: selectedVersion.selected?.fecha_publicacion || null,
     });
@@ -411,6 +419,14 @@ function findInternalAnexoHeadings(text, parentLabel = "") {
     }
     headings.push({
       title,
+      index: match.index + match[0].indexOf(match[1]),
+    });
+  }
+
+  const supplementalHeadingRegex = /(?:^|\n)\s*((?:[A-C]\)\s+[^\n]{5,260})|(?:\d{1,2}\.\s+(?:El|La|Los|Las|En|Para|Estos|Estas|Tanto|A falta|Cada|Cuando)\b[^\n]{3,160}))\s*(?=\n|$)/g;
+  while ((match = supplementalHeadingRegex.exec(text)) !== null) {
+    headings.push({
+      title: match[1].trim(),
       index: match.index + match[0].indexOf(match[1]),
     });
   }
@@ -499,9 +515,122 @@ function splitTextByReviewLimit(text, limit = SPLIT_TARGET_LENGTH) {
   return parts.filter(Boolean);
 }
 
+function splitAnexoRootByOfficialParts(fragment) {
+  const text = String(fragment?.texto || "");
+  const partRegex = /(?:^|\n)\s*([A-C]\)\s+[^\n]+)\s*(?=\n|$)/g;
+  const headings = [];
+  let match;
+
+  while ((match = partRegex.exec(text)) !== null) {
+    headings.push({
+      title: match[1].trim(),
+      index: match.index + match[0].indexOf(match[1]),
+    });
+  }
+
+  if (headings.length === 0) return [fragment];
+
+  const pieces = [];
+  const prefix = text.slice(0, headings[0].index).trim();
+  if (prefix.length >= 20) {
+    pieces.push({
+      ...fragment,
+      seccion: `${fragment.seccion} - Cabecera`,
+      source_label: `${fragment.source_label} - Cabecera`,
+      texto: prefix,
+    });
+  }
+
+  headings.forEach((heading, index) => {
+    const next = headings[index + 1];
+    const fragmentText = text.slice(heading.index, next ? next.index : text.length).trim();
+    if (fragmentText.length < 20) return;
+
+    if (/^ANEXO\s+VI$/i.test(String(fragment.source_label || "").trim())) {
+      const numberedPieces = splitOfficialPartByNumberedParagraphs(fragment, heading.title, fragmentText);
+      if (numberedPieces.length > 1) {
+        pieces.push(...numberedPieces);
+        return;
+      }
+    }
+
+    pieces.push({
+      ...fragment,
+      seccion: appendFragmentHeadingLabel(fragment.seccion, heading.title),
+      source_label: appendFragmentHeadingLabel(fragment.source_label, heading.title),
+      texto: fragmentText,
+    });
+  });
+
+  return pieces;
+}
+
+function splitOfficialPartByNumberedParagraphs(fragment, partTitle, partText) {
+  const numberedHeadingRegex = /(?:^|\n)\s*(\d{1,2}\.\s+[^\n]{3,220})/g;
+  const headings = [];
+  let match;
+
+  while ((match = numberedHeadingRegex.exec(partText)) !== null) {
+    headings.push({
+      title: match[1].trim(),
+      index: match.index + match[0].indexOf(match[1]),
+    });
+  }
+
+  if (headings.length < 2) return [];
+
+  const pieces = [];
+  const partSection = appendFragmentHeadingLabel(fragment.seccion, partTitle);
+  const partLabel = appendFragmentHeadingLabel(fragment.source_label, partTitle);
+  const prefix = partText.slice(0, headings[0].index).trim();
+
+  if (prefix.length >= 20) {
+    pieces.push({
+      ...fragment,
+      seccion: partSection,
+      source_label: partLabel,
+      texto: prefix,
+    });
+  }
+
+  headings.forEach((heading, index) => {
+    const next = headings[index + 1];
+    const fragmentText = partText.slice(heading.index, next ? next.index : partText.length).trim();
+    if (fragmentText.length < 20) return;
+
+    pieces.push({
+      ...fragment,
+      seccion: appendFragmentHeadingLabel(partSection, heading.title),
+      source_label: appendFragmentHeadingLabel(partLabel, heading.title),
+      texto: fragmentText,
+    });
+  });
+
+  return pieces;
+}
+
+function compactFragmentHeadingLabel(headingTitle) {
+  const heading = String(headingTitle || "").trim();
+  const partMatch = heading.match(/^([A-C]\))\s+Disposiciones aplicables\b/i);
+  if (partMatch) return `${partMatch[1]} Disposiciones aplicables`;
+
+  const numberedMatch = heading.match(/^(\d{1,2})\.\s+(.+)$/);
+  if (!numberedMatch || heading.length <= 70) return heading;
+
+  const number = numberedMatch[1];
+  const body = numberedMatch[2].trim();
+  const subjectMatch = body.match(/^(?:El|La|Los|Las)\s+(.+?)\s+(?:deber|dispondr|est[aá]r|ser[aá]n|se\s+)/i);
+  if (!subjectMatch) return `${number}`;
+
+  let subject = subjectMatch[1].trim().replace(/\s+de los lugares de trabajo$/i, "");
+  if (subject.length > 70) return `${number}`;
+  subject = subject.charAt(0).toUpperCase() + subject.slice(1);
+  return `${number}. ${subject}`;
+}
+
 function appendFragmentHeadingLabel(parentLabel, headingTitle) {
   const parent = String(parentLabel || "").trim();
-  const heading = String(headingTitle || "").trim();
+  const heading = compactFragmentHeadingLabel(headingTitle);
   const sectionMatch = heading.match(/^Secci(?:ó|o)n\s+(\d+)/i);
 
   if (sectionMatch) {
@@ -518,6 +647,14 @@ function isAnexoIIFragment(fragment) {
 
 function isAnexoIITableHeading(title) {
   return /^Tabla\s+(?:I{1,3}|IV|V|\d+)\b/i.test(String(title || ""));
+}
+
+function hasOfficialAnexoPartHeadings(fragment) {
+  return (
+    fragment?.tipo === "Anexo" &&
+    /^ANEXO\s+(?:[IVXLCDM]+|ÃšNICO|UNICO)$/i.test(String(fragment?.source_label || "").trim()) &&
+    /(?:^|\n)\s*[A-C]\)\s+Disposiciones\b/.test(String(fragment?.texto || ""))
+  );
 }
 
 function isAnexoIIMaintenanceHeading(title) {
@@ -581,6 +718,10 @@ function splitLargeAnexoFragment(fragment) {
       source_label: `${fragment.source_label} - Parte ${index + 1}`,
       texto,
     }));
+  }
+
+  if (/^ANEXO\s+VI$/i.test(String(fragment.source_label || "").trim()) && hasOfficialAnexoPartHeadings(fragment)) {
+    return splitAnexoRootByOfficialParts(fragment);
   }
 
   const headings = findInternalAnexoHeadings(fragment.texto, fragment.source_label || fragment.seccion);
@@ -665,8 +806,9 @@ function splitLargeAnexos(fragments, warnings) {
     const shouldSplitAnexoIIForReview =
       /^ANEXO\s+II$/i.test(String(fragment.source_label || "").trim()) &&
       fragment.texto.length > SPLIT_TARGET_LENGTH;
+    const shouldSplitAnexoPartsForReview = hasOfficialAnexoPartHeadings(fragment);
 
-    if (fragment.tipo !== "Anexo" || (fragment.texto.length <= MAX_FRAGMENT_LENGTH && !shouldSplitAnexoIIForReview)) {
+    if (fragment.tipo !== "Anexo" || (fragment.texto.length <= MAX_FRAGMENT_LENGTH && !shouldSplitAnexoIIForReview && !shouldSplitAnexoPartsForReview)) {
       output.push(fragment);
       continue;
     }
@@ -697,6 +839,11 @@ function anexoPrefixLabel(fragment) {
   return match ? match[0].toUpperCase() : "";
 }
 
+function leadingSectionNumber(value) {
+  const match = String(value || "").trim().match(/^(\d+(?:\.\d+)*)\b/);
+  return match ? match[1] : "";
+}
+
 function isAnexoIVShortEpigraph(fragment) {
   const label = String(fragment?.source_label || "");
   const text = String(fragment?.texto || "");
@@ -723,7 +870,30 @@ function canMergeTitleWithNext(current, next) {
   if (current?.tipo !== "Anexo" || next?.tipo !== "Anexo") return false;
   const currentAnexo = anexoPrefixLabel(current);
   const nextAnexo = anexoPrefixLabel(next);
-  return currentAnexo === "ANEXO II" && nextAnexo === "ANEXO II";
+  if (currentAnexo !== nextAnexo) return false;
+  if (!["ANEXO II", "ANEXO III"].includes(currentAnexo)) return false;
+
+  const currentNumber = leadingSectionNumber(current.texto);
+  const nextNumber = leadingSectionNumber(next.texto);
+  if (!currentNumber || !nextNumber) return currentAnexo === "ANEXO II";
+
+  return nextNumber.startsWith(`${currentNumber}.`);
+}
+
+function dispositionRootLabel(fragment) {
+  const label = String(fragment?.source_label || fragment?.seccion || "").trim();
+  const match = label.match(/^(Disposici(?:Ã³|ó|o)n\s+(?:adicional|transitoria|final|derogatoria|Ãºnica|única)(?:\s+\S+)?)/i);
+  return match ? normalizeReviewText(match[1]) : "";
+}
+
+function canMergeTinyDispositionWithPrevious(current, previous) {
+  if (!previous) return false;
+  if (normalizeReviewText(current?.tipo) !== "disposicion" || normalizeReviewText(previous?.tipo) !== "disposicion") return false;
+  if (String(current?.texto || "").trim().length >= 120) return false;
+  if (!/^\d+\./.test(String(current?.texto || "").trim())) return false;
+  const currentRoot = dispositionRootLabel(current);
+  const previousRoot = dispositionRootLabel(previous);
+  return Boolean(currentRoot && previousRoot && currentRoot === previousRoot);
 }
 
 function cleanTinyOrphanFragments(fragments, warnings) {
@@ -760,6 +930,16 @@ function cleanTinyOrphanFragments(fragments, warnings) {
       fragments[i + 1] = {
         ...next,
         texto: `${fragment.texto}\n${next.texto}`.trim(),
+      };
+      mergedTinyTitles += 1;
+      continue;
+    }
+
+    const previous = output[output.length - 1];
+    if (isTitleOnlyFragment(fragment) && canMergeTinyDispositionWithPrevious(fragment, previous)) {
+      output[output.length - 1] = {
+        ...previous,
+        texto: `${previous.texto}\n${fragment.texto}`.trim(),
       };
       mergedTinyTitles += 1;
       continue;
@@ -822,7 +1002,7 @@ function fragmentsFromPlainText(xml) {
       article_number: tipo === "Artículo" ? articleNumberFrom(current.title) : null,
       orden: index + 1,
       texto: blockText,
-      source_label: sourceLabel(tipo, current.title),
+      source_label: sourceLabel(tipo, current.title, blockText),
       fuente_bloque_id: null,
     };
   }).filter((fragment) => fragment.texto.length >= 20);
@@ -947,6 +1127,7 @@ function fragmentSimpleWarnings(fragment) {
 
 function buildMarkdownPreview(preview) {
   const metadata = preview.metadata || {};
+  const currentBoeId = metadata.boeId || "BOE-ID";
   const stats = preview.stats || {};
   const warnings = Array.isArray(preview.warnings) ? preview.warnings : [];
   const fragments = Array.isArray(preview.fragments) ? preview.fragments : [];
@@ -970,10 +1151,98 @@ function buildMarkdownPreview(preview) {
   lines.push("- Debe detectar anexos o tablas mal divididos.");
   lines.push("- Debe detectar bloques demasiado largos.");
   lines.push("- Debe revisar especialmente anexos, tablas, apendices, epigrafes tecnicos y mantenimiento.");
+  lines.push("- Debe revisar la estructura interna de anexos: partes A), B), C), subapartados numerados, saltos de numeracion, tablas, epigrafes tecnicos, titulos pegados al bloque anterior, anexos mezclados y apartados que desaparecen o quedan absorbidos por otro bloque.");
+  lines.push("- Debe comprobar que las condiciones juridicas no se crucen entre elementos distintos por culpa de la segmentacion.");
   lines.push("- Debe decir si esta OK para subir o NO subir todavia.");
-  lines.push("- Si la IA revisora no esta segura, debe decir \"revision dudosa\" y no proponer cambios agresivos.");
+  lines.push("- Si la IA revisora no esta segura sobre un apartado, salto de numeracion o posible ausencia de contenido, debe responder \"REVISION DUDOSA\" y pedir comprobacion a ChatGPT.");
+  lines.push("- Si responde NO SUBIR TODAVIA o REVISION DUDOSA, debe aportar evidencia textual suficiente de cada bloque problemático.");
   lines.push("- No debe preparar el prompt final para Codex.");
   lines.push("- Si detecta problemas, debe preparar INSTRUCCIONES PARA CHATGPT para que ChatGPT redacte despues el prompt bueno para Codex.");
+  lines.push("");
+  lines.push("## EVIDENCIA TEXTUAL OBLIGATORIA");
+  lines.push("");
+  lines.push("- Si la IA revisora responde NO SUBIR TODAVIA o REVISION DUDOSA, esta obligada a aportar evidencia concreta.");
+  lines.push("- Un veredicto negativo o dudoso sin evidencia suficiente se considera INCOMPLETO y no debe pasar directamente a Codex.");
+  lines.push("- En ese caso, debe pedirse a la IA revisora una revision ampliada con los bloques y textos afectados antes de preparar cualquier prompt para Codex.");
+  lines.push("- Si la IA revisora detecta un problema o duda en un bloque, debe incluir para CADA problema:");
+  lines.push("  1. Bloque afectado.");
+  lines.push("  2. source_label.");
+  lines.push("  3. Articulo, anexo o disposicion afectada.");
+  lines.push("  4. Problema concreto.");
+  lines.push("  5. Texto completo del bloque afectado si el bloque es corto.");
+  lines.push("  6. Si el bloque es largo, 20-40 lineas antes y despues del punto problematico.");
+  lines.push("  7. Bloque anterior y bloque posterior si ayudan a entender el corte.");
+  lines.push("  8. La frase exacta donde empieza el problema.");
+  lines.push("  9. Por que cree que hay perdida, mezcla o mal corte.");
+  lines.push("  10. Si es fallo real confirmado o solo duda.");
+  lines.push("  11. La estructura que cree que deberia mantenerse unida o separada.");
+  lines.push("- No debe pegar toda la norma.");
+  lines.push("- Solo debe pegar bloques problematicos o extractos suficientes para que ChatGPT pueda preparar un prompt concreto.");
+  lines.push("- Si sospecha que un apartado esta absorbido, debe indicar que bloque puede contenerlo y aportar el texto alrededor.");
+  lines.push("- Si sospecha que falta un apartado, debe explicar por que lo cree, pero no inventarlo.");
+  lines.push("- Si menciona fragmentos inventados, texto reescrito o texto no literal, debe listar TODOS los fragmentos afectados uno por uno.");
+  lines.push("- No vale decir solo \"hay 18 fragmentos\" o una cifra global: debe indicar numero de bloque, source_label y extracto de cada fragmento afectado.");
+  lines.push("- ChatGPT debe usar esa evidencia para preparar un prompt mas concreto para Codex.");
+  lines.push("- Codex seguira verificando en local antes de corregir.");
+  lines.push("");
+  lines.push("## REGLA CRITICA SOBRE TEXTO JURIDICO");
+  lines.push("");
+  lines.push("- Gemini no puede inventar texto.");
+  lines.push("- ChatGPT no puede inventar texto.");
+  lines.push("- Antigravity no puede inventar texto.");
+  lines.push("- Codex no puede inventar texto.");
+  lines.push("- Nadie puede reescribir, resumir, completar, corregir ni alterar el texto juridico.");
+  lines.push("- Solo se permite cambiar la forma en que el script segmenta texto oficial ya existente.");
+  lines.push("- El texto de normas_partes.texto debe ser literal, contiguo y procedente de BOE/XML/fuente oficial.");
+  lines.push("- El texto final debe conservar exactamente el mismo sentido que la ley original.");
+  lines.push("- Solo se pueden cambiar reglas de segmentacion, nunca el contenido juridico.");
+  lines.push("- No se puede cambiar el significado ni mover condiciones entre elementos.");
+  lines.push("- Ejemplo conceptual: si el texto oficial dice que una condicion aplica a un elemento A y otra a un elemento B, la segmentacion nunca puede provocar que esas condiciones se crucen, mezclen o parezcan aplicarse al elemento equivocado.");
+  lines.push("- Codex no debe corregir supuestas ausencias si no estan confirmadas por el preview y la revision de ChatGPT.");
+  lines.push("");
+  lines.push("## FLUJO DE VALIDACION");
+  lines.push("");
+  lines.push("1. Gemini o la IA revisora revisa este preview.");
+  lines.push("2. Si todo esta bien, responde OK PARA SUBIR.");
+  lines.push("3. Si ve un problema real, responde NO SUBIR TODAVIA y explica los bloques afectados.");
+  lines.push("4. Si hay duda, responde REVISION DUDOSA.");
+  lines.push("5. Si Gemini responde NO SUBIR TODAVIA o REVISION DUDOSA sin evidencia concreta suficiente, el veredicto queda incompleto.");
+  lines.push("6. Un veredicto incompleto debe pedir revision ampliada a Gemini/IA revisora; no debe pasar directamente a Codex.");
+  lines.push("7. ChatGPT analiza solo la ultima iteracion del preview y el veredicto de Gemini.");
+  lines.push("8. ChatGPT se centra especialmente en los bloques marcados por Gemini, salvo que vea un fallo evidente adicional.");
+  lines.push("9. Si Gemini detecta un problema o una duda concreta, ChatGPT NO debe pedir al usuario que ejecute comandos manuales.");
+  lines.push("10. ChatGPT debe preparar un prompt cerrado para Codex solo cuando tenga evidencia suficiente o una duda concreta verificable.");
+  lines.push("11. Codex comprueba los archivos locales, confirma si la duda es real, corrige solo si procede, ejecuta el dry-run y devuelve resultado.");
+  lines.push("12. El usuario debe recibir el prompt para Codex o el analisis final, no una lista de comandos intermedios.");
+  lines.push("13. ChatGPT prepara un prompt cerrado para Codex solo si hay fallo real o duda concreta que Codex deba verificar.");
+  lines.push("14. Si Gemini marca una duda concreta, ChatGPT debe incluirla en el prompt para Codex como tarea de verificacion previa.");
+  lines.push("15. Ejemplo: si Gemini dice \"posible ausencia del apartado 9\", ChatGPT debe pedir a Codex que compruebe en preview.json/preview.md si el apartado 9 existe, si fue omitido o absorbido, y que solo corrija si confirma el fallo.");
+  lines.push("16. Codex debe hacer las comprobaciones necesarias en los archivos locales.");
+  lines.push("17. Codex solo debe modificar tools/import-boe-norma.mjs si confirma un fallo real de segmentacion.");
+  lines.push("18. Codex no puede inventar apartados, reescribir texto juridico, cambiar contenido normativo ni mover condiciones entre elementos.");
+  lines.push("19. Codex modifica unicamente reglas de segmentacion en tools/import-boe-norma.mjs.");
+  lines.push("20. Codex ejecuta el dry-run de la misma norma.");
+  lines.push("21. Codex deja regenerado el preview.md.");
+  lines.push("22. Codex devuelve resumen del diagnostico, cambios y resultado.");
+  lines.push("23. Nadie sube a Supabase hasta que el dry-run y la revision final indiquen que esta apto.");
+  lines.push("");
+  lines.push("## FLUJO RAPIDO TRAS CODEX");
+  lines.push("");
+  lines.push("- Si Codex modifica tools/import-boe-norma.mjs, ejecuta el dry-run y regenera correctamente preview.md, el usuario NO esta obligado a pasar primero el resumen de Codex a ChatGPT.");
+  lines.push("- En ese caso, el usuario puede enviar directamente el nuevo preview.md a Gemini o a la IA revisora.");
+  lines.push("- ChatGPT solo debe intervenir despues de Gemini si Gemini responde NO SUBIR TODAVIA o REVISION DUDOSA.");
+  lines.push("- Si Gemini responde OK PARA SUBIR, el usuario puede volver a ChatGPT solo para confirmacion final antes de una subida real.");
+  lines.push("- Esta regla no elimina el dry-run obligatorio ni la prohibicion de tocar Supabase durante la revision.");
+  lines.push("");
+  lines.push("## REGLA ANTI-COMANDOS MANUALES");
+  lines.push("");
+  lines.push("- ChatGPT no debe responder al usuario con comandos manuales tipo Select-String, rg, cat, node o busquedas en preview.json para que el usuario los ejecute.");
+  lines.push("- Si hace falta comprobar algo en los archivos locales, ChatGPT debe convertir esa comprobacion en una tarea para Codex.");
+  lines.push("- Codex debe comprobar la duda antes de modificar.");
+  lines.push("- Codex debe ejecutar el dry-run obligatorio, regenerar preview.md y devolver resultado.");
+  lines.push("- Codex solo puede modificar reglas de segmentacion si confirma un fallo real.");
+  lines.push("- Codex no puede reescribir texto juridico, inventar apartados, cambiar contenido normativo ni alterar el significado.");
+  lines.push("- El texto juridico debe seguir siendo literal, contiguo y procedente del BOE/XML/fuente oficial.");
   lines.push("");
   lines.push("## REGLA DE DECISION FINAL");
   lines.push("");
@@ -994,20 +1263,44 @@ function buildMarkdownPreview(preview) {
   lines.push("La IA revisora debe responder SIEMPRE con esta estructura exacta:");
   lines.push("");
   lines.push("VEREDICTO:");
-  lines.push("OK PARA SUBIR / NO SUBIR TODAVIA");
+  lines.push("OK PARA SUBIR / NO SUBIR TODAVIA / REVISION DUDOSA");
   lines.push("");
   lines.push("DIAGNOSTICO:");
   lines.push("explicacion breve del problema");
   lines.push("");
   lines.push("BLOQUES CON PROBLEMAS:");
-  lines.push("bloque, etiqueta actual, problema concreto");
+  lines.push("bloque, source_label actual, articulo/anexo/disposicion afectada, texto inicial o punto donde empieza el problema, problema concreto, estructura que deberia separarse, si es fallo confirmado o duda");
+  lines.push("");
+  lines.push("EVIDENCIA TEXTUAL:");
+  lines.push("por cada bloque problematico: bloque, source_label, articulo/anexo/disposicion afectada, frase exacta donde empieza el problema, texto completo si no es largo o 20-40 lineas antes y despues si lo es, bloque anterior/posterior si ayudan, explicacion de perdida/mezcla/mal corte, estructura que deberia mantenerse unida o separada y duda concreta si existe");
+  lines.push("si se alegan fragmentos inventados, texto reescrito o texto no literal: listar TODOS los fragmentos afectados uno por uno; no vale indicar solo una cifra global");
   lines.push("");
   lines.push("INSTRUCCIONES PARA CHATGPT:");
   lines.push("- Norma revisada:");
   lines.push("- Archivo que podria tocar Codex: tools/import-boe-norma.mjs");
   lines.push("- Problema detectado:");
-  lines.push("- Bloques afectados:");
+  lines.push("- Bloques afectados: numero de bloque, source_label actual, texto inicial o punto exacto del problema.");
+  lines.push("- Estructura que deberia separarse o mantenerse unida:");
+  lines.push("- Duda concreta si existe:");
+  lines.push("- Evidencia textual aportada por Gemini:");
+  lines.push("- Si la evidencia es insuficiente, ChatGPT debe pedir revision ampliada a Gemini/IA revisora y NO preparar todavia prompt para Codex.");
   lines.push("- Cambio minimo recomendado:");
+  lines.push("- Que debe comprobar ChatGPT antes de preparar prompt para Codex:");
+  lines.push("  - Si el problema sigue existiendo en esta ultima iteracion del preview.");
+  lines.push("  - Si el dry-run no devuelve APTO PARA SUBIR.");
+  lines.push("  - Si hay mezcla real visible en los bloques.");
+  lines.push("  - Si la duda de Gemini esta confirmada o debe quedar como revision dudosa sin cambio agresivo.");
+  lines.push("  - ChatGPT no debe pedir al usuario comprobaciones manuales por terminal; debe trasladarlas a Codex.");
+  lines.push("  - Si hay una duda concreta, ChatGPT debe incluirla en el prompt para Codex como verificacion previa obligatoria.");
+  lines.push("- Si ChatGPT prepara prompt para Codex, debe dejar el trabajo mascado:");
+  lines.push("  - archivo a tocar: tools/import-boe-norma.mjs");
+  lines.push("  - problema exacto");
+  lines.push("  - comprobaciones locales que debe hacer Codex antes de corregir");
+  lines.push("  - regla minima de segmentacion");
+  lines.push("  - ejemplo de texto disparador");
+  lines.push("  - resultado esperado en el preview");
+  lines.push("  - prueba obligatoria");
+  lines.push("  - que no debe tocar Codex");
   lines.push("- Que NO debe tocar Codex:");
   lines.push("  - Supabase");
   lines.push("  - /api/ask");
@@ -1016,17 +1309,21 @@ function buildMarkdownPreview(preview) {
   lines.push("  - embeddings");
   lines.push("  - subida real");
   lines.push("  - contenido juridico");
+  lines.push("  - texto juridico oficial");
   lines.push("- Prueba obligatoria:");
-  lines.push("  node tools/import-boe-norma.mjs --boe-id BOE-A-2017-6606 --dry-run");
+  lines.push(`  node tools/import-boe-norma.mjs --boe-id ${currentBoeId} --dry-run`);
   lines.push("- Obligacion que debe incluir el PROMPT PARA CODEX:");
-  lines.push("  - Despues de modificar tools/import-boe-norma.mjs, Codex debe ejecutar siempre: node tools/import-boe-norma.mjs --boe-id BOE-A-2017-6606 --dry-run");
-  lines.push("  - Codex debe dejar regenerado el archivo: tools/output/BOE-A-2017-6606/preview.md");
+  lines.push(`  - Despues de modificar tools/import-boe-norma.mjs, Codex debe ejecutar siempre: node tools/import-boe-norma.mjs --boe-id ${currentBoeId} --dry-run`);
+  lines.push(`  - Codex debe dejar regenerado el archivo: tools/output/${currentBoeId}/preview.md`);
   lines.push("  - Codex no debe pedir al usuario que ejecute el comando.");
   lines.push("  - Codex debe hacer la prueba y devolver el resultado.");
   lines.push("- Que debe comprobar ChatGPT antes de preparar el prompt para Codex:");
+  lines.push("  - ChatGPT solo debe intervenir despues de Gemini si Gemini responde NO SUBIR TODAVIA o REVISION DUDOSA.");
+  lines.push("  - Si Gemini responde OK PARA SUBIR, ChatGPT puede hacer solo una confirmacion final antes de subida real.");
   lines.push("  - ChatGPT debe preparar prompt para Codex solo si el problema sigue existiendo despues del dry-run.");
   lines.push("  - ChatGPT debe preparar prompt para Codex solo si el dry-run no devuelve APTO PARA SUBIR.");
   lines.push("  - ChatGPT debe preparar prompt para Codex solo si hay una mezcla real visible en los bloques.");
+  lines.push("  - ChatGPT no debe pedir al usuario que ejecute comandos de comprobacion; si hay que verificar algo, debe incluirlo como tarea para Codex.");
   lines.push("");
   lines.push("RESUMEN FINAL:");
   lines.push("maximo 5 lineas");
@@ -1098,7 +1395,46 @@ function buildMarkdownPreview(preview) {
     lines.push("");
   });
 
+  const integritySection = buildMarkdownIntegritySection(preview.integrity);
+  if (integritySection) {
+    lines.push(integritySection);
+  }
+
   return `${lines.join("\n")}\n`;
+}
+
+function buildMarkdownIntegritySection(integrity) {
+  if (!integrity || !integrity.checks) return "";
+
+  const checks = integrity.checks;
+  const ok = (value) => value ? "OK" : "NO";
+  const nonLiteralCount = Number(checks.nonLiteralCount || 0);
+  const previewJsonHasInstructions = Boolean(checks.previewJsonHasInstructions);
+  const instructionFragmentsCount = Number(checks.instructionFragmentsCount || 0);
+  const emptyOrDecorativeCount = Number(checks.emptyOrDecorativeCount || 0);
+  const inventedOrAddedTextCount = nonLiteralCount;
+  const rewrittenLegalTextCount = nonLiteralCount;
+
+  const lines = [];
+  lines.push("## VERIFICACIÓN DE INTEGRIDAD");
+  lines.push("");
+  lines.push(`- Resultado: ${integrity.apto ? "APTO PARA REVISIÓN" : "NO APTO"}`);
+  lines.push(`- Texto jurídico procedente de BOE/XML: ${ok(nonLiteralCount === 0)}`);
+  lines.push(`- Preview JSON sin instrucciones: ${ok(!previewJsonHasInstructions)}`);
+  lines.push(`- Fragmentos con instrucciones del preview: ${instructionFragmentsCount}`);
+  lines.push(`- Fragmentos vacíos/decorativos: ${emptyOrDecorativeCount}`);
+  lines.push(`- Fragmentos no literales/contiguos detectados: ${nonLiteralCount}`);
+  lines.push(`- Texto añadido o inventado: ${inventedOrAddedTextCount}`);
+  lines.push(`- Texto jurídico reescrito: ${rewrittenLegalTextCount}`);
+  lines.push("- Supabase no tocado: OK");
+  lines.push("- Embeddings no generados: OK");
+  lines.push("- Subida real no ejecutada: OK");
+  lines.push("");
+  lines.push(integrity.apto
+    ? "Conclusión recomendada: El preview conserva el texto jurídico literal detectado desde BOE/XML y está listo para revisión externa."
+    : "Conclusión recomendada: El preview no está listo para revisión externa hasta resolver los problemas técnicos de integridad detectados.");
+
+  return lines.join("\n");
 }
 
 async function writeReviewPreviewFiles({ boeId, preview }) {
