@@ -1102,11 +1102,59 @@ Pruebas producción:
 1. ¿Qué dice el artículo 14 de la Ley 31/1995? → OK, fuente Artículo 14
 2. ¿Qué dice el artículo 32 de la Ley 31/1995? → OK, fuente Artículo 32
 3. ¿Qué dice el artículo 32 bis de la Ley 31/1995? → OK, fuente Artículo 32 bis
-4. Pregunta práctica pendiente si no se ha hecho todavía
-5. Pregunta “No consta” pendiente si no se ha hecho todavía
+Auditoría posterior:
+- Se revisaron las normas ya cargadas:
+  - RD-513-2017 id=38
+  - RD-486-1997 id=39
+  - RD-505-2007 id=40
+  - RD-164-2025 id=41
+  - LEY-31-1995 id=42
+- Solo se detectó un artículo especial con sufijo:
+  - LEY-31-1995 — Artículo 32 bis
+- No existen artículos ter ni quater en las normas auditadas.
+- /api/ask responde correctamente a artículos normales y al Artículo 32 bis.
+- No se detectaron mezclas entre Artículo 32 y Artículo 32 bis.
+- No se detectó ningún “No consta” incorrecto.
+
+Resultado:
+AUDITORÍA OK
 
 Estado:
-VALIDADA TÉCNICAMENTE, pendiente completar prueba práctica y “No consta” si quieres cierre total.
+VALIDADA
+
+## RD-39-1997 — VALIDADA
+
+Fecha validación: 2026-05-17  
+BOE ID: BOE-A-1997-1853  
+Supabase id: 43  
+Código: RD-39-1997  
+Fragmentos: 92  
+Embeddings: 92  
+Artículos detectados: 45  
+Anexos detectados: 8  
+Origen: BOE/XML oficial  
+
+Proceso:
+- dry-run BOE ejecutado
+- preview.md revisado con Gemini
+- detectados fallos iniciales de integridad en SECCION 1 y SECCION 2
+- corregido importador para evitar etiquetas técnicas dentro del campo texto
+- detectada hiperfragmentación asimétrica en ANEXO VI
+- corregido importador para mantener compacta la parte “II. Especialización optativa”
+- reforzadas instrucciones del preview.md para hacerlo autosuficiente
+- nuevo preview generado correctamente
+- Gemini dio OK PARA SUBIR
+- subida real ejecutada correctamente
+- no se subió preview.md
+- norma, fragmentos, metadatos y embeddings insertados correctamente
+
+Pruebas producción:
+1. ¿Qué dice el artículo 1 del RD-39-1997? → OK, fuente Artículo 1
+2. ¿Cuándo debe una empresa tener servicio de prevención propio según el RD-39-1997? → OK, fuente principal Artículo 14
+3. ¿Qué dice el RD-39-1997 sobre piscinas públicas? → No consta → OK
+
+Estado:
+VALIDADA
 
 ---
 

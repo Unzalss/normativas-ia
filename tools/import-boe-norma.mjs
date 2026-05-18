@@ -252,6 +252,10 @@ function tipoFromBloque(attrs, title) {
 function textFromBloqueBody(body, title) {
   const text = stripTags(body);
   if (/^pre(?:Ã¡|á|a)mbulo$/i.test(String(title || "").trim())) return text;
+  const technicalSectionMatch = String(title || "").trim().match(/^SECCION\s+(\d+)$/i);
+  if (technicalSectionMatch && new RegExp(`^Secci(?:ó|o)n\\s+${technicalSectionMatch[1]}[.ªº]?\\b`, "i").test(text)) {
+    return text;
+  }
   if (!title || text.toLowerCase().startsWith(title.toLowerCase())) return text;
   return `${title}\n${text}`.trim();
 }
@@ -425,8 +429,12 @@ function findInternalAnexoHeadings(text, parentLabel = "") {
 
   const supplementalHeadingRegex = /(?:^|\n)\s*((?:[A-C]\)\s+[^\n]{5,260})|(?:\d{1,2}\.\s+(?:El|La|Los|Las|En|Para|Estos|Estas|Tanto|A falta|Cada|Cuando)\b[^\n]{3,160}))\s*(?=\n|$)/g;
   while ((match = supplementalHeadingRegex.exec(text)) !== null) {
+    const title = match[1].trim();
+    if (isAnexoVIShortOptativeOptionHeading(title, parentLabel)) {
+      continue;
+    }
     headings.push({
-      title: match[1].trim(),
+      title,
       index: match.index + match[0].indexOf(match[1]),
     });
   }
@@ -446,6 +454,14 @@ function findInternalAnexoHeadings(text, parentLabel = "") {
   return headings
     .sort((a, b) => a.index - b.index)
     .filter((heading, index, sorted) => index === 0 || heading.index !== sorted[index - 1].index);
+}
+
+function isAnexoVIShortOptativeOptionHeading(title, parentLabel = "") {
+  if (!/\bANEXO\s+VI\b/i.test(String(parentLabel || ""))) return false;
+  const normalized = normalizeReviewText(title).replace(/\s+/g, " ");
+  return normalized === "a seguridad en el trabajo" ||
+    normalized === "b higiene industrial" ||
+    normalized === "c ergonomia y psicosociologia aplicada";
 }
 
 function splitTextByApproxLimit(text, limit = SPLIT_TARGET_LENGTH) {
@@ -1138,9 +1154,16 @@ function buildMarkdownPreview(preview) {
   lines.push("# INSTRUCCIONES PARA REVISIÓN CON IA");
   lines.push("");
   lines.push("Este archivo es un preview tecnico de fragmentacion automatica antes de subir una norma a Supabase.");
+  lines.push("Este archivo es autosuficiente: la IA revisora debe revisar el preview completo usando solo estas instrucciones, sin pedir mensajes externos al usuario.");
   lines.push("");
   lines.push("La IA revisora debe seguir estas reglas:");
   lines.push("");
+  lines.push("- Debe revisar el preview completo sin necesitar instrucciones externas.");
+  lines.push("- Debe revisar solo la version actual de este preview. Si una version anterior tenia problemas, no debe asumir que siguen existiendo.");
+  lines.push("- No debe inventar problemas no presentes en el preview actual.");
+  lines.push("- No debe pedir instrucciones externas al usuario.");
+  lines.push("- Si el dry-run indica APTO PARA SUBIR, aun asi debe hacer una revision estructural basica antes de responder OK.");
+  lines.push("- Si el preview incluye la seccion DETALLE DE FALLOS DE INTEGRIDAD, debe centrar la revision especialmente en esos fallos concretos.");
   lines.push("- No debe reescribir la norma.");
   lines.push("- No debe inventar texto.");
   lines.push("- No debe corregir contenido juridico.");
@@ -1158,30 +1181,37 @@ function buildMarkdownPreview(preview) {
   lines.push("- Si responde NO SUBIR TODAVIA o REVISION DUDOSA, debe aportar evidencia textual suficiente de cada bloque problemático.");
   lines.push("- No debe preparar el prompt final para Codex.");
   lines.push("- Si detecta problemas, debe preparar INSTRUCCIONES PARA CHATGPT para que ChatGPT redacte despues el prompt bueno para Codex.");
+  lines.push("- Si responde OK PARA SUBIR, debe confirmar expresamente que no ve texto inventado, texto reescrito, perdida de contiguidad, bloques huerfanos graves, anexos mal mezclados ni source_label incompatible con el texto.");
   lines.push("");
   lines.push("## EVIDENCIA TEXTUAL OBLIGATORIA");
   lines.push("");
   lines.push("- Si la IA revisora responde NO SUBIR TODAVIA o REVISION DUDOSA, esta obligada a aportar evidencia concreta.");
   lines.push("- Un veredicto negativo o dudoso sin evidencia suficiente se considera INCOMPLETO y no debe pasar directamente a Codex.");
   lines.push("- En ese caso, debe pedirse a la IA revisora una revision ampliada con los bloques y textos afectados antes de preparar cualquier prompt para Codex.");
+  lines.push("- No basta con decir frases generales como \"hay 2 fragmentos\", \"ANEXO VI esta mal\", \"hay texto inventado\", \"hay texto reescrito\" o \"hay perdida de contiguidad\".");
+  lines.push("- Todo problema debe quedar asociado a bloques concretos del preview. Si no se listan los bloques afectados uno por uno, la evidencia es insuficiente.");
+  lines.push("- Si el validador automatico indica una cifra de fragmentos no literales, textos inventados o textos reescritos, la IA revisora debe listar exactamente esos fragmentos uno por uno.");
   lines.push("- Si la IA revisora detecta un problema o duda en un bloque, debe incluir para CADA problema:");
-  lines.push("  1. Bloque afectado.");
-  lines.push("  2. source_label.");
-  lines.push("  3. Articulo, anexo o disposicion afectada.");
-  lines.push("  4. Problema concreto.");
-  lines.push("  5. Texto completo del bloque afectado si el bloque es corto.");
-  lines.push("  6. Si el bloque es largo, 20-40 lineas antes y despues del punto problematico.");
-  lines.push("  7. Bloque anterior y bloque posterior si ayudan a entender el corte.");
-  lines.push("  8. La frase exacta donde empieza el problema.");
-  lines.push("  9. Por que cree que hay perdida, mezcla o mal corte.");
-  lines.push("  10. Si es fallo real confirmado o solo duda.");
-  lines.push("  11. La estructura que cree que deberia mantenerse unida o separada.");
+  lines.push("  1. Numero de bloque.");
+  lines.push("  2. source_label exacto.");
+  lines.push("  3. Tipo de problema.");
+  lines.push("  4. Articulo, anexo o disposicion afectada.");
+  lines.push("  5. Texto completo del bloque si es corto.");
+  lines.push("  6. Si el bloque es largo, minimo 30 lineas antes y 30 lineas despues del punto problematico.");
+  lines.push("  7. Bloque anterior completo si es corto.");
+  lines.push("  8. Bloque posterior completo si es corto.");
+  lines.push("  9. Frase exacta donde empieza el problema.");
+  lines.push("  10. Comparacion clara entre texto oficial esperado segun BOE/XML y texto generado en el preview.");
+  lines.push("  11. Explicacion de si el fallo es texto inventado, texto reescrito, perdida de texto, mezcla de bloques, mal corte, mal source_label o simple bloque corto sin fallo real.");
+  lines.push("  12. Estructura que deberia mantenerse unida o separada y si es fallo real confirmado o solo duda.");
   lines.push("- No debe pegar toda la norma.");
   lines.push("- Solo debe pegar bloques problematicos o extractos suficientes para que ChatGPT pueda preparar un prompt concreto.");
   lines.push("- Si sospecha que un apartado esta absorbido, debe indicar que bloque puede contenerlo y aportar el texto alrededor.");
   lines.push("- Si sospecha que falta un apartado, debe explicar por que lo cree, pero no inventarlo.");
+  lines.push("- Si detecta fragmento no literal/no contiguo, texto anadido o inventado, texto juridico reescrito, perdida de texto, mezcla de bloques, hiperfragmentacion con perdida de sentido o mal source_label que pueda afectar a busquedas, debe aportar la evidencia completa anterior para cada bloque afectado.");
   lines.push("- Si menciona fragmentos inventados, texto reescrito o texto no literal, debe listar TODOS los fragmentos afectados uno por uno.");
-  lines.push("- No vale decir solo \"hay 18 fragmentos\" o una cifra global: debe indicar numero de bloque, source_label y extracto de cada fragmento afectado.");
+  lines.push("- No vale decir solo \"hay 18 fragmentos\" o una cifra global: debe indicar numero de bloque, source_label, tipo de problema y extracto de cada fragmento afectado.");
+  lines.push("- Si no puede aportar esta evidencia, debe responder que su veredicto es INCOMPLETO y pedir una revision ampliada, no pedir cambios al parser.");
   lines.push("- ChatGPT debe usar esa evidencia para preparar un prompt mas concreto para Codex.");
   lines.push("- Codex seguira verificando en local antes de corregir.");
   lines.push("");
@@ -1269,11 +1299,12 @@ function buildMarkdownPreview(preview) {
   lines.push("explicacion breve del problema");
   lines.push("");
   lines.push("BLOQUES CON PROBLEMAS:");
-  lines.push("bloque, source_label actual, articulo/anexo/disposicion afectada, texto inicial o punto donde empieza el problema, problema concreto, estructura que deberia separarse, si es fallo confirmado o duda");
+  lines.push("para cada bloque: numero de bloque, source_label exacto, articulo/anexo/disposicion afectada, tipo de problema, frase exacta donde empieza, estructura que deberia separarse o mantenerse unida, si es fallo real confirmado o duda");
   lines.push("");
   lines.push("EVIDENCIA TEXTUAL:");
-  lines.push("por cada bloque problematico: bloque, source_label, articulo/anexo/disposicion afectada, frase exacta donde empieza el problema, texto completo si no es largo o 20-40 lineas antes y despues si lo es, bloque anterior/posterior si ayudan, explicacion de perdida/mezcla/mal corte, estructura que deberia mantenerse unida o separada y duda concreta si existe");
-  lines.push("si se alegan fragmentos inventados, texto reescrito o texto no literal: listar TODOS los fragmentos afectados uno por uno; no vale indicar solo una cifra global");
+  lines.push("por cada bloque problematico: numero de bloque, source_label exacto, tipo de problema, articulo/anexo/disposicion afectada, texto completo si el bloque es corto o minimo 30 lineas antes y 30 lineas despues si es largo, bloque anterior completo si es corto, bloque posterior completo si es corto, frase exacta donde empieza el problema, comparacion texto oficial esperado segun BOE/XML vs texto generado en preview, explicacion de si es texto inventado, texto reescrito, perdida de texto, mezcla de bloques, mal corte, mal source_label o simple bloque corto sin fallo real, estructura que deberia mantenerse unida o separada y si es fallo real confirmado o duda");
+  lines.push("si se alegan fragmentos inventados, texto reescrito, texto no literal, perdida de contiguidad o una cifra del validador automatico: listar TODOS los fragmentos afectados uno por uno; no vale indicar solo una cifra global");
+  lines.push("si no se aporta esta evidencia, el veredicto NO SUBIR TODAVIA o REVISION DUDOSA es INCOMPLETO y ChatGPT no debe preparar prompt para Codex todavia");
   lines.push("");
   lines.push("INSTRUCCIONES PARA CHATGPT:");
   lines.push("- Norma revisada:");
@@ -1434,6 +1465,60 @@ function buildMarkdownIntegritySection(integrity) {
     ? "Conclusión recomendada: El preview conserva el texto jurídico literal detectado desde BOE/XML y está listo para revisión externa."
     : "Conclusión recomendada: El preview no está listo para revisión externa hasta resolver los problemas técnicos de integridad detectados.");
 
+  const detailSection = buildMarkdownIntegrityDetailsSection(integrity);
+  if (detailSection) {
+    lines.push("");
+    lines.push(detailSection);
+  }
+
+  return lines.join("\n");
+}
+
+function markdownCodeBlock(value) {
+  const text = String(value || "").trim();
+  return text ? `\`\`\`text\n${text}\n\`\`\`` : "_No disponible_";
+}
+
+function buildMarkdownIntegrityDetailsSection(integrity) {
+  const problems = Array.isArray(integrity?.problems) ? integrity.problems : [];
+  if (problems.length === 0) return "";
+
+  const lines = [];
+  lines.push("## DETALLE DE FALLOS DE INTEGRIDAD");
+  lines.push("");
+  lines.push("Esta seccion es tecnica: ayuda a revisar el preview sin inventar ni adivinar. Si el validador no puede localizar una comparacion exacta en BOE/XML, lo indica como candidato comparable.");
+
+  problems.forEach((problem, index) => {
+    lines.push("");
+    lines.push(`### Fallo ${index + 1}`);
+    lines.push("");
+    lines.push(`- Tipo de fallo: ${markdownValue(problem.kind)}`);
+    lines.push(`- Bloque: ${markdownValue(problem.block_number ?? problem.orden)}`);
+    lines.push(`- source_label: ${markdownValue(problem.source_label)}`);
+    lines.push(`- fuente_bloque_id: ${markdownValue(problem.fuente_bloque_id)}`);
+    lines.push(`- Motivo: ${markdownValue(problem.message)}`);
+    lines.push(`- Frase exacta donde empieza la discrepancia: ${markdownValue(problem.discrepancy_phrase)}`);
+    lines.push(`- Fallo confirmado o aviso tecnico: ${markdownValue(problem.confirmation || "fallo confirmado por validador tecnico")}`);
+    lines.push("");
+    lines.push("Texto generado en preview:");
+    lines.push("");
+    lines.push(markdownCodeBlock(problem.generated_text));
+    lines.push("");
+    lines.push("Texto esperado BOE/XML o fragmento comparable:");
+    lines.push("");
+    lines.push(markdownCodeBlock(problem.official_comparable_text));
+    lines.push("");
+    lines.push(`Explicacion breve: ${markdownValue(problem.explanation || "El texto normalizado del fragmento no aparece como una secuencia literal y contigua dentro del BOE/XML oficial.")}`);
+
+    if (Array.isArray(problem.related_candidates) && problem.related_candidates.length > 0) {
+      lines.push("");
+      lines.push("Candidatos relacionados:");
+      problem.related_candidates.forEach((candidate) => {
+        lines.push(`- Bloque ${markdownValue(candidate.block_number)} | ${markdownValue(candidate.source_label)} | ${markdownValue(candidate.fuente_bloque_id)}`);
+      });
+    }
+  });
+
   return lines.join("\n");
 }
 
@@ -1468,6 +1553,75 @@ function isDecorativeOnlyFragmentText(text) {
   return /^(anexo|secci(?:Ã³|o)n|cap(?:Ã­|i)tulo|tabla|reglamento|ap(?:Ã©|e)ndice)(\s+[ivxlcdm\dªº.:-]+)?$/i.test(value);
 }
 
+function truncateIntegrityText(text, maxLength = 2200) {
+  const value = normalizeIntegrityText(text);
+  if (value.length <= maxLength) return value;
+  const half = Math.floor((maxLength - 80) / 2);
+  return `${value.slice(0, half)}\n\n[... texto recortado para preview ...]\n\n${value.slice(-half)}`;
+}
+
+function findOfficialComparableText(officialText, generatedText) {
+  const generated = normalizeIntegrityText(generatedText);
+  if (!generated) {
+    return {
+      phrase: null,
+      officialComparableText: null,
+      explanation: "El fragmento generado esta vacio tras normalizacion.",
+    };
+  }
+
+  for (const length of [220, 180, 140, 100, 70, 45]) {
+    const phrase = generated.slice(0, Math.min(length, generated.length)).trim();
+    if (phrase.length < 20) continue;
+    const index = officialText.indexOf(phrase);
+    if (index !== -1) {
+      const start = Math.max(0, index - 1200);
+      const end = Math.min(officialText.length, index + phrase.length + 1200);
+      return {
+        phrase,
+        officialComparableText: officialText.slice(start, end),
+        explanation: "El inicio del fragmento existe en BOE/XML, pero el fragmento completo no aparece como una secuencia literal y contigua.",
+      };
+    }
+  }
+
+  const words = generated.split(/\s+/).filter(Boolean);
+  for (let offset = 0; offset < Math.min(words.length, 40); offset += 5) {
+    const phrase = words.slice(offset, offset + 12).join(" ").trim();
+    if (phrase.length < 30) continue;
+    const index = officialText.indexOf(phrase);
+    if (index !== -1) {
+      const start = Math.max(0, index - 1200);
+      const end = Math.min(officialText.length, index + phrase.length + 1200);
+      return {
+        phrase,
+        officialComparableText: officialText.slice(start, end),
+        explanation: "Se localizo un tramo comparable en BOE/XML, pero no todo el fragmento generado aparece contiguo.",
+      };
+    }
+  }
+
+  return {
+    phrase: generated.slice(0, 180),
+    officialComparableText: null,
+    explanation: "No se ha podido localizar ni siquiera el inicio del fragmento en el texto BOE/XML normalizado; revisar si hay texto alterado, recolocado o un problema de normalizacion.",
+  };
+}
+
+function relatedIntegrityCandidates(fragments, index) {
+  return [index - 1, index + 1]
+    .filter((candidateIndex) => candidateIndex >= 0 && candidateIndex < fragments.length)
+    .map((candidateIndex) => {
+      const fragment = fragments[candidateIndex] || {};
+      return {
+        block_number: candidateIndex + 1,
+        orden: fragment.orden ?? null,
+        source_label: fragment.source_label ?? null,
+        fuente_bloque_id: fragment.fuente_bloque_id ?? null,
+      };
+    });
+}
+
 function validateDryRunIntegrity({ preview, xml }) {
   const fragments = Array.isArray(preview?.fragments) ? preview.fragments : [];
   const officialText = normalizeIntegrityText(stripTags(xml));
@@ -1476,51 +1630,107 @@ function validateDryRunIntegrity({ preview, xml }) {
   const problems = [];
   const nonLiteralFragments = [];
 
-  const pushProblem = (kind, message, fragment = null) => {
+  const pushProblem = (kind, message, fragment = null, index = null, details = {}) => {
     problems.push({
       kind,
       message,
+      block_number: Number.isInteger(index) ? index + 1 : null,
       orden: fragment?.orden ?? null,
       source_label: fragment?.source_label ?? null,
+      fuente_bloque_id: fragment?.fuente_bloque_id ?? null,
+      generated_text: details.generated_text ?? null,
+      official_comparable_text: details.official_comparable_text ?? null,
+      discrepancy_phrase: details.discrepancy_phrase ?? null,
+      explanation: details.explanation ?? null,
+      confirmation: details.confirmation ?? null,
+      related_candidates: details.related_candidates ?? [],
     });
   };
 
-  fragments.forEach((fragment) => {
+  fragments.forEach((fragment, index) => {
     const text = normalizeIntegrityText(fragment?.texto || "");
     const sourceLabel = String(fragment?.source_label || "");
     const seccion = String(fragment?.seccion || "");
 
     if (containsPreviewInstructionsText(text) || containsPreviewInstructionsText(sourceLabel) || containsPreviewInstructionsText(seccion)) {
-      pushProblem("preview_instructions_in_fragment", "Las instrucciones del preview aparecen en un fragmento subible.", fragment);
+      pushProblem("preview_instructions_in_fragment", "Las instrucciones del preview aparecen en un fragmento subible.", fragment, index, {
+        generated_text: truncateIntegrityText(fragment?.texto || ""),
+        discrepancy_phrase: "INSTRUCCIONES PARA REVISION CON IA",
+        explanation: "El fragmento contiene texto operativo del preview que no debe subirse ni embeberse.",
+        confirmation: "fallo confirmado por validador tecnico",
+        related_candidates: relatedIntegrityCandidates(fragments, index),
+      });
     }
 
     if (isDecorativeOnlyFragmentText(text)) {
-      pushProblem("empty_or_decorative_fragment", "Fragmento vacÃ­o o solo decorativo.", fragment);
+      pushProblem("empty_or_decorative_fragment", "Fragmento vacio o solo decorativo.", fragment, index, {
+        generated_text: truncateIntegrityText(fragment?.texto || ""),
+        discrepancy_phrase: text,
+        explanation: "El fragmento no contiene contenido juridico util tras normalizacion.",
+        confirmation: "fallo confirmado por validador tecnico",
+        related_candidates: relatedIntegrityCandidates(fragments, index),
+      });
     }
 
     if (!officialText.includes(text)) {
+      const comparable = findOfficialComparableText(officialText, text);
       nonLiteralFragments.push({
+        block_number: index + 1,
         orden: fragment.orden,
         source_label: sourceLabel,
+        fuente_bloque_id: fragment.fuente_bloque_id ?? null,
         length: text.length,
         preview: text.slice(0, 180),
+        discrepancy_phrase: comparable.phrase,
+        official_comparable_text: comparable.officialComparableText,
       });
-      pushProblem("non_literal_text", "El texto del fragmento no aparece como texto literal y contiguo en el BOE/XML oficial.", fragment);
+      pushProblem("non_literal_text", "El texto del fragmento no aparece como texto literal y contiguo en el BOE/XML oficial.", fragment, index, {
+        generated_text: truncateIntegrityText(fragment?.texto || ""),
+        official_comparable_text: truncateIntegrityText(comparable.officialComparableText || ""),
+        discrepancy_phrase: comparable.phrase,
+        explanation: comparable.explanation,
+        confirmation: "fallo confirmado por validador tecnico",
+        related_candidates: relatedIntegrityCandidates(fragments, index),
+      });
     }
 
     if (/\bANEXO\s+II\b/i.test(sourceLabel)) {
       const lowerText = text.toLowerCase();
       if (/\s\/\s/.test(sourceLabel)) {
-        pushProblem("mixed_source_label", "source_label contiene '/' con espacios, posible fusiÃ³n artificial de sistemas.", fragment);
+        pushProblem("mixed_source_label", "source_label contiene '/' con espacios, posible fusion artificial de sistemas.", fragment, index, {
+          generated_text: truncateIntegrityText(fragment?.texto || ""),
+          discrepancy_phrase: sourceLabel,
+          explanation: "La etiqueta parece combinar sistemas distintos.",
+          confirmation: "aviso tecnico del validador",
+          related_candidates: relatedIntegrityCandidates(fragments, index),
+        });
       }
       if (/-\s+Tabla\s+(?:I|II)\s+-/i.test(sourceLabel) && /^Tabla\s+(?:I|II)\./i.test(text)) {
-        pushProblem("table_context_in_text", "Fragmento operativo de ANEXO II conserva encabezado de tabla dentro del campo texto.", fragment);
+        pushProblem("table_context_in_text", "Fragmento operativo de ANEXO II conserva encabezado de tabla dentro del campo texto.", fragment, index, {
+          generated_text: truncateIntegrityText(fragment?.texto || ""),
+          discrepancy_phrase: text.slice(0, 180),
+          explanation: "El contexto de tabla debe estar en metadata/source_label si no es contiguo al texto operativo.",
+          confirmation: "fallo confirmado por validador tecnico",
+          related_candidates: relatedIntegrityCandidates(fragments, index),
+        });
       }
       if (/hidrantes/.test(lowerText) && /sistemas de columna seca/.test(lowerText)) {
-        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Hidrantes y Sistemas de columna seca.", fragment);
+        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Hidrantes y Sistemas de columna seca.", fragment, index, {
+          generated_text: truncateIntegrityText(fragment?.texto || ""),
+          discrepancy_phrase: "Hidrantes / Sistemas de columna seca",
+          explanation: "El fragmento contiene dos sistemas tecnicos que deben revisarse como posible mezcla.",
+          confirmation: "aviso tecnico del validador",
+          related_candidates: relatedIntegrityCandidates(fragments, index),
+        });
       }
       if (/extintores de incendio/.test(lowerText) && /bocas de incendio/.test(lowerText)) {
-        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Extintores y BIE.", fragment);
+        pushProblem("mixed_anexo_ii_systems", "Fragmento de ANEXO II mezcla Extintores y BIE.", fragment, index, {
+          generated_text: truncateIntegrityText(fragment?.texto || ""),
+          discrepancy_phrase: "Extintores de incendio / Bocas de incendio",
+          explanation: "El fragmento contiene dos sistemas tecnicos que deben revisarse como posible mezcla.",
+          confirmation: "aviso tecnico del validador",
+          related_candidates: relatedIntegrityCandidates(fragments, index),
+        });
       }
     }
   });
