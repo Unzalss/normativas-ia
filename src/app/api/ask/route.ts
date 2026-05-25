@@ -941,14 +941,21 @@ export async function POST(req: Request) {
                 const candidateContextGroups = Array.from(articleMap.values()).map((group) => [group.label, group.frags] as [string, any[]]);
                 const contextGroups: Array<[string, any[]]> = [];
                 let contextCharsBudget = 0;
+                const buildContextBlock = (label: string, frags: any[], index: number) => {
+                    const first = frags[0] || {};
+                    const normaCodigo = first.codigo || (first.norma_id ? `Norma ID ${first.norma_id}` : "Norma ID no disponible");
+                    const normaTitulo = first.norma_titulo || "Titulo no disponible";
+                    const fullText = frags
+                        .map((f: any) => f.texto || f.content || "")
+                        .join("\n");
+
+                    return `[${index}]\nNorma: ${normaCodigo} - ${normaTitulo}\nArticulo/seccion: ${label}\nTexto:\n${fullText}`;
+                };
 
                 for (const [label, frags] of candidateContextGroups) {
                     if (contextGroups.length >= maxContextGroups) break;
 
-                    const fullText = frags
-                        .map((f: any) => f.texto || f.content || "")
-                        .join("\n");
-                    const nextBlock = `[${contextGroups.length + 1}] ${label}:\n${fullText}`;
+                    const nextBlock = buildContextBlock(label, frags, contextGroups.length + 1);
                     const nextChars = nextBlock.length + (contextGroups.length > 0 ? 2 : 0);
 
                     if (contextGroups.length > 0 && contextCharsBudget + nextChars > maxContextChars) {
@@ -969,10 +976,7 @@ export async function POST(req: Request) {
 
                 const reconstructedArticles = contextGroups
                     .map(([label, frags], i) => {
-                        const fullText = frags
-                            .map((f: any) => f.texto || f.content || "")
-                            .join("\n");
-                        return `[${i + 1}] ${label}:\n${fullText}`;
+                        return buildContextBlock(label, frags, i + 1);
                     });
 
                 const context = reconstructedArticles.join("\n\n");
@@ -1015,7 +1019,7 @@ Fundamento normativo:
 <Explicación jurídica basada estrictamente en los fragmentos proporcionados. No simplifiques. Si hay varias condiciones o requisitos, menciónalos todos.>
 
 Cita:
-<Indica la fuente exacta usando literalmente la etiqueta que aparece antes de los dos puntos en el CONTEXTO. Para artículos usa [Artículo X]. Para anexos usa la sección completa recibida, por ejemplo [ANEXO I - Sección 1.ª ... - 5. Sistemas de bocas de incendio equipadas]. Prohibido inventar "Ap." si no aparece exactamente en esa etiqueta.>
+<Indica la fuente exacta usando la Norma y el Articulo/seccion que aparecen en el CONTEXTO. Para articulos usa [Norma - Articulo X]. Para anexos usa [Norma - seccion completa recibida], por ejemplo [RD-513-2017 - ANEXO II - Sistemas de bocas de incendio equipadas]. Prohibido inventar "Ap." si no aparece exactamente en esa etiqueta.>
 
 Reglas adicionales:
 - Responde ÚNICAMENTE con información contenida en los fragmentos. No uses conocimiento externo ni inventes datos.
