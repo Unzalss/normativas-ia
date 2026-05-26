@@ -251,7 +251,7 @@ function tipoFromBloque(attrs, title) {
 
 function textFromBloqueBody(body, title) {
   const text = stripTags(body);
-  if (/^pre(?:Ã¡|á|a)mbulo$/i.test(String(title || "").trim())) return text;
+  if (/^pre(?:á|a)mbulo$/i.test(String(title || "").trim())) return text;
   const technicalSectionMatch = String(title || "").trim().match(/^SECCION\s+(\d+)$/i);
   if (technicalSectionMatch && new RegExp(`^Secci(?:ó|o)n\\s+${technicalSectionMatch[1]}[.ªº]?\\b`, "i").test(text)) {
     return text;
@@ -262,7 +262,7 @@ function textFromBloqueBody(body, title) {
 
 function removeDuplicatedArticleHeading(text) {
   return String(text || "").replace(
-    /^\s*(Art(?:Ã­|í|i)culo\s+(\d+))\s+Art(?:Ã­|í|i)culo\s+\2\.\s*/i,
+    /^\s*(Art(?:í|i)culo\s+(\d+))\s+Art(?:í|i)culo\s+\2\.\s*/i,
     "Artículo $2. "
   );
 }
@@ -668,7 +668,7 @@ function isAnexoIITableHeading(title) {
 function hasOfficialAnexoPartHeadings(fragment) {
   return (
     fragment?.tipo === "Anexo" &&
-    /^ANEXO\s+(?:[IVXLCDM]+|ÃšNICO|UNICO)$/i.test(String(fragment?.source_label || "").trim()) &&
+    /^ANEXO\s+(?:[IVXLCDM]+|ÚNICO|UNICO)$/i.test(String(fragment?.source_label || "").trim()) &&
     /(?:^|\n)\s*[A-C]\)\s+Disposiciones\b/.test(String(fragment?.texto || ""))
   );
 }
@@ -898,7 +898,7 @@ function canMergeTitleWithNext(current, next) {
 
 function dispositionRootLabel(fragment) {
   const label = String(fragment?.source_label || fragment?.seccion || "").trim();
-  const match = label.match(/^(Disposici(?:Ã³|ó|o)n\s+(?:adicional|transitoria|final|derogatoria|Ãºnica|única)(?:\s+\S+)?)/i);
+  const match = label.match(/^(Disposici(?:ó|o)n\s+(?:adicional|transitoria|final|derogatoria|única)(?:\s+\S+)?)/i);
   return match ? normalizeReviewText(match[1]) : "";
 }
 
@@ -1076,7 +1076,7 @@ function printSummary({ metadata, stats, warnings, fragments }) {
   console.log(`Rango: ${metadata.rango || "N/D"}`);
   console.log(`Fecha: ${metadata.fecha || "N/D"}`);
   console.log(`Identificador: ${metadata.identificador || "N/D"}`);
-  console.log(`CÃ³digo sugerido: ${metadata.codigo_sugerido || metadata.boeId || "N/D"}`);
+  console.log(`Código sugerido: ${metadata.codigo_sugerido || metadata.boeId || "N/D"}`);
   console.log(`Total bloques XML/candidatos: ${stats.total_fragmentos_candidatos}`);
   console.log(`Total fragmentos candidatos: ${stats.total_fragmentos_candidatos}`);
   console.log(`Artículos detectados: ${stats.articulos_detectados}`);
@@ -1134,7 +1134,7 @@ function fragmentSimpleWarnings(fragment) {
   if (fragment?.tipo === "Anexo" && /art(?:í|i)culo/i.test(seccion)) {
     warnings.push("Tipo Anexo con seccion que parece articulo.");
   }
-  if (fragment?.tipo === "ArtÃ­culo" && fragment?.article_number === null) {
+  if (fragment?.tipo === "Artículo" && fragment?.article_number === null) {
     warnings.push("Articulo sin article_number detectado.");
   }
 
@@ -1578,7 +1578,7 @@ function containsPreviewInstructionsText(value) {
 function isDecorativeOnlyFragmentText(text) {
   const value = normalizeIntegrityText(text);
   if (!value || value.length < 20) return true;
-  return /^(anexo|secci(?:Ã³|o)n|cap(?:Ã­|i)tulo|tabla|reglamento|ap(?:Ã©|e)ndice)(\s+[ivxlcdm\dªº.:-]+)?$/i.test(value);
+  return /^(anexo|secci(?:ó|o)n|cap(?:í|i)tulo|tabla|reglamento|ap(?:é|e)ndice)(\s+[ivxlcdm\dªº.:-]+)?$/i.test(value);
 }
 
 function truncateIntegrityText(text, maxLength = 2200) {
@@ -1764,7 +1764,7 @@ function validateDryRunIntegrity({ preview, xml }) {
   });
 
   if (!containsPreviewInstructionsText(previewMarkdown)) {
-    pushProblem("preview_markdown_missing_instructions", "preview.md no contiene las instrucciones fijas para revisiÃ³n con IA.");
+    pushProblem("preview_markdown_missing_instructions", "preview.md no contiene las instrucciones fijas para revisión con IA.");
   }
   if (containsPreviewInstructionsText(previewJson)) {
     pushProblem("preview_json_contains_instructions", "preview.json contiene instrucciones del preview.md.");
@@ -1790,12 +1790,12 @@ function validateDryRunIntegrity({ preview, xml }) {
 function printDryRunIntegrity(result) {
   console.log("\n[BOE][DRY_RUN][INTEGRIDAD]");
   console.log(`Resultado: ${result.apto ? "APTO PARA SUBIR" : "NO APTO PARA SUBIR"}`);
-  console.log(`preview.md contiene instrucciones: ${result.checks.previewMarkdownHasInstructions ? "sÃ­" : "no"}`);
-  console.log(`preview.json contiene instrucciones: ${result.checks.previewJsonHasInstructions ? "sÃ­" : "no"}`);
+  console.log(`preview.md contiene instrucciones: ${result.checks.previewMarkdownHasInstructions ? "sí" : "no"}`);
+  console.log(`preview.json contiene instrucciones: ${result.checks.previewJsonHasInstructions ? "sí" : "no"}`);
   console.log(`Fragmentos con instrucciones del preview: ${result.checks.instructionFragmentsCount}`);
-  console.log(`Fragmentos vacÃ­os/decorativos: ${result.checks.emptyOrDecorativeCount}`);
+  console.log(`Fragmentos vacíos/decorativos: ${result.checks.emptyOrDecorativeCount}`);
   console.log(`Mezclas evidentes en ANEXO II: ${result.checks.mixedAnexoIICount}`);
-  console.log(`source_label con '/' de fusiÃ³n artificial: ${result.checks.artificialSlashLabelCount}`);
+  console.log(`source_label con '/' de fusión artificial: ${result.checks.artificialSlashLabelCount}`);
   console.log(`Contexto de tabla dentro de texto operativo ANEXO II: ${result.checks.tableContextInTextCount}`);
   console.log(`Fragmentos no literales/contiguos detectados: ${result.checks.nonLiteralCount}`);
 
@@ -2194,7 +2194,7 @@ async function executeUploadMode({ supabase, openai, preview, validation, normaP
   let numEmbeddingsGenerados = 0;
 
   console.log("\n[BOE][EXECUTE_UPLOAD] Iniciando subida real controlada");
-  console.log(`CÃ³digo: ${normaPayload.codigo}`);
+  console.log(`Código: ${normaPayload.codigo}`);
   console.log(`Document hash: ${documentHash}`);
   console.log(`Fragmentos preparados: ${partesPayloads.length}`);
 
@@ -2206,7 +2206,7 @@ async function executeUploadMode({ supabase, openai, preview, validation, normaP
       .single();
 
     if (insertNormaError) throw new Error(`Error insertando norma: ${insertNormaError.message}`);
-    if (!insertedNorma?.id) throw new Error("Supabase no devolviÃ³ id al insertar norma.");
+    if (!insertedNorma?.id) throw new Error("Supabase no devolvió id al insertar norma.");
 
     normaId = insertedNorma.id;
     console.log(`[BOE][EXECUTE_UPLOAD] Norma creada con id=${normaId}`);
@@ -2352,7 +2352,7 @@ async function confirmUploadPreflightMode(boeId) {
     console.log(`- Se reemplazará la norma_id: ${targetDuplicateId}`);
   }
   if (executeUpload) {
-    console.log("[BOE][PRE_FLIGHT] Validado para ejecuciÃ³n real solicitada con --confirm-upload --execute-upload.");
+    console.log("[BOE][PRE_FLIGHT] Validado para ejecución real solicitada con --confirm-upload --execute-upload.");
   } else {
     console.log("[BOE][PRE_FLIGHT] Solo lectura. No se ha insertado, borrado ni generado embeddings.");
   }
