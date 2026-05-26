@@ -114,7 +114,7 @@ function normalizeTipo(raw) {
 function articleNumberFrom(text) {
   const match = String(text || "").match(/\bart(?:í|i)culo\s+(\d+)(?:\s+(bis|ter|quater))?\b/i);
   if (!match) return null;
-  return match[2] ? `${match[1]} ${match[2].toLowerCase()}` : Number(match[1]);
+  return match[2] ? `${match[1]} ${match[2].toLowerCase()}` : match[1];
 }
 
 function sourceLabel(tipo, seccion, text = "") {

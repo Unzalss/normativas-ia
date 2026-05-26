@@ -188,7 +188,7 @@ export default function Home() {
                         // 1) Title logic: lookup in our preloaded `normas` state
                         let sourceTitle = `Documento ${index + 1}`;
                         if (item.norma_id) {
-                            const preloadedNorma = normas.find(Math => Math.id === item.norma_id);
+                            const preloadedNorma = normas.find((norma) => norma.id === item.norma_id);
                             if (preloadedNorma) {
                                 sourceTitle = preloadedNorma.codigo || preloadedNorma.titulo;
                             } else if (item.codigo) {
