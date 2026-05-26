@@ -798,14 +798,20 @@ export async function POST(req: Request) {
         // returned fragments — embedding similarity is low for keyword-based queries,
         // not because the content is absent.
         const keywordRulePinned = parsedNormaId !== null && validData.length >= 1;
+        const hasSingleHighConfidenceEvidence =
+            validData.length === 1 &&
+            bestScore >= 0.85 &&
+            String(validData[0]?.texto || validData[0]?.content || "").length >= 300;
 
         const bypassEvidence =
             (articuloFoundInFragments && validData.length >= 1) ||
-            keywordRulePinned;
+            keywordRulePinned ||
+            hasSingleHighConfidenceEvidence;
 
         debugInfo.articuloMencionado = articuloMencionado;
         debugInfo.articuloFoundInFragments = articuloFoundInFragments;
         debugInfo.keywordRulePinned = keywordRulePinned;
+        debugInfo.hasSingleHighConfidenceEvidence = hasSingleHighConfidenceEvidence;
         debugInfo.bypassEvidence = bypassEvidence;
         console.log(`[ASK] hasEnoughEvidence=${hasEnoughEvidence} | keywordRulePinned=${keywordRulePinned} | bypassEvidence=${bypassEvidence}`);
 
