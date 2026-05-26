@@ -27,20 +27,14 @@ export function aiPartToParsedFragment(part: AIStructuredPart): ParsedFragment {
   // Calculate articulo string
   const articulo = isArticulo && part.numero ? `Artículo ${part.numero}` : null;
 
-  // Calculate article_number safely
-  let article_number: number | null = null;
-  if (isArticulo && part.numero) {
-    const parsedInt = parseInt(part.numero, 10);
-    if (!isNaN(parsedInt)) {
-      article_number = parsedInt;
+  let article_number: string | null = null;
+  if (part.numero) {
+    const numMatch = part.numero.match(/(\d+)(?:\s+(bis|ter|quater))?/i);
+    if (numMatch) {
+      article_number = `${numMatch[1]}${numMatch[2] ? ` ${numMatch[2].toLowerCase()}` : ""}`;
     }
   }
-
-  let safeNumero: string | null = null;
-  if (part.numero) {
-    const numMatch = part.numero.match(/\d+/);
-    if (numMatch) safeNumero = numMatch[0];
-  }
+  const safeNumero = article_number;
 
   return {
     tipo: capitalizedTipo,

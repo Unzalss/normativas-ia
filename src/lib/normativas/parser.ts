@@ -59,7 +59,7 @@ export interface ParsedFragment {
     seccion: string;
     texto: string;
     articulo: string | null;
-    article_number: number | null;
+    article_number: string | null;
     apartado: string | null;
     es_indice: boolean;
 }
@@ -262,32 +262,31 @@ function createBaseFragment(tipo: string, seccion: string, texto: string, es_ind
 }
 
 function extractMetadataFromTitle(title: string) {
-    const res = { tipo: null as string | null, numero: null as string | null, article_number: null as number | null };
+    const res = { tipo: null as string | null, numero: null as string | null, article_number: null as string | null };
     const tLower = title.toLowerCase();
 
-    // Función de ayuda para extraer solo enteros válidos o anular a null
-    const safeNumericCast = (rawText: string): string | null => {
-        const numMatch = rawText.match(/\d+/);
-        return numMatch ? numMatch[0] : null;
+    const extractArticleNumber = (rawText: string): string | null => {
+        const match = rawText.match(/(\d+)(?:\s+(bis|ter|quater))?/i);
+        return match ? `${match[1]}${match[2] ? ` ${match[2].toLowerCase()}` : ""}` : null;
     };
 
     if (tLower.startsWith('art') || tLower.startsWith('art.')) {
         res.tipo = 'Artículo';
         const rawNum = title.replace(/art(?:í|i)culo\s+/i, '').replace(/art\.\s*/i, '').trim();
-        res.numero = safeNumericCast(rawNum);
-        res.article_number = res.numero ? parseInt(res.numero) : null;
+        res.numero = extractArticleNumber(rawNum);
+        res.article_number = res.numero;
     } else if (tLower.includes('disposición')) {
         res.tipo = 'Disposición';
         const rawNum = title.replace(/disposición\s+\w+\s+/i, '').trim();
-        res.numero = safeNumericCast(rawNum);
+        res.numero = extractArticleNumber(rawNum);
     } else if (tLower.startsWith('anexo')) {
         res.tipo = 'Anexo';
         const rawNum = title.replace(/anexo\s+/i, '').trim();
-        res.numero = safeNumericCast(rawNum);
+        res.numero = extractArticleNumber(rawNum);
     } else if (tLower.startsWith('capítulo')) {
         res.tipo = 'Capítulo';
         const rawNum = title.replace(/capítulo\s+/i, '').trim();
-        res.numero = safeNumericCast(rawNum);
+        res.numero = extractArticleNumber(rawNum);
     }
 
     return res;
