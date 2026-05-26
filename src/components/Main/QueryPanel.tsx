@@ -470,10 +470,19 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
 
 
-                    const renderCitations = (raw: string) =>
-                        raw.split('\n').filter(l => l.trim()).map((line, i) => (
+                    const realSourceCitations = sources
+                        .slice(0, 5)
+                        .map((source) => {
+                            const norma = source.title || 'Norma';
+                            const section = source.source_label || source.subtitle || source.articulo_detectado || source.metadata?.articulo || null;
+                            return section ? `[${norma} - ${section}]` : `[${norma}]`;
+                        })
+                        .filter((line, index, lines) => lines.indexOf(line) === index);
+
+                    const renderCitations = (lines: string[]) =>
+                        lines.map((line, i) => (
                             <div key={i} className={styles.citaLine}>
-                                <strong>{line.trim()}</strong>
+                                <strong>{line}</strong>
                             </div>
                         ));
 
@@ -573,11 +582,11 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                         <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
                                                     </div>
                                                 )}
-                                                {cita && (
+                                                {realSourceCitations.length > 0 && (
                                                     <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
                                                         <div className={styles.blockLabel}>Fuentes citadas</div>
                                                         <div className={styles.citaList}>
-                                                            {renderCitations(cita)}
+                                                            {renderCitations(realSourceCitations)}
                                                         </div>
                                                     </div>
                                                 )}

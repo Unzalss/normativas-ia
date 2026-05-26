@@ -921,7 +921,7 @@ export async function POST(req: Request) {
                 // Group all fragments (not just the top slice) by their base article key
                 const articleMap = new Map<string, { label: string; frags: any[] }>();
                 for (const frag of validData) {
-                    const key = baseArticle(frag) || `__frag_${frag.id}`;
+                    const key = `${frag.norma_id || frag.codigo || "norma"}::${baseArticle(frag) || `__frag_${frag.id}`}`;
                     if (!articleMap.has(key)) articleMap.set(key, { label: displayArticle(frag) || key, frags: [] });
                     articleMap.get(key)!.frags.push(frag);
                 }
