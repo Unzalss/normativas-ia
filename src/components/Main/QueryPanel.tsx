@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import styles from './QueryPanel.module.css';
-import { ChevronDown, Search, ChevronRight, FileText, Download, Share, X } from 'lucide-react';
+import { ChevronDown, Search, ChevronRight, FileText, Download, Save, Share, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { createClient } from '@supabase/supabase-js';
 import { ResponseData, Source, MapNode } from '@/lib/types';
@@ -434,7 +434,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                     const extract = (label: string) => {
                         const regex = new RegExp(
-                            `${label}:\\s*\\n?([\\s\\S]*?)(?=\\n(?:Respuesta breve|Fundamento normativo|Cita):|$)`,
+                            `${label}:\\s*\\n?([\\s\\S]*?)(?=\\n(?:Respuesta breve|Fundamento normativo|Cita|Puntos a comprobar|Checklist técnico|Checklist):|$)`,
                             'i'
                         );
                         return text.match(regex)?.[1]?.trim() ?? '';
@@ -462,11 +462,18 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     const respuestaBreve      = extract('Respuesta breve');
                     const fundamentoNormativo = extract('Fundamento normativo');
                     const cita               = extract('Cita');
+                    const checklistText       = extract('Puntos a comprobar') || extract('Checklist técnico') || extract('Checklist');
                     const isStructured       = !!(respuestaBreve || fundamentoNormativo || cita);
                     const criterioPracticoRaw = respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
                     const criterioPractico   = collapseRepeatedText(criterioPracticoRaw);
                     const shouldShowRespuestaBreve = respuestaBreve && collapseRepeatedText(respuestaBreve) !== criterioPractico;
-                    const shouldShowUnstructuredCriterio = criterioPractico && criterioPractico.trim() !== text.trim();
+                    const conclusionRapida = criterioPractico || respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
+                    const checklistItems = checklistText
+                        ? checklistText
+                            .split(/\n+/)
+                            .map((item) => item.replace(/^\s*(?:[-*•]|\d+[\.)])\s*/, '').trim())
+                            .filter(Boolean)
+                        : [];
 
 
 
@@ -485,6 +492,44 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                 <strong>{line}</strong>
                             </div>
                         ));
+
+                    const renderArticleGroups = () => {
+                        if (mapaNormativo.length === 0) {
+                            return (
+                                <div className={styles.emptyNormativeBlock}>
+                                    No hay artículos estructurados asociados a esta respuesta.
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div className={styles.applicableArticlesList}>
+                                {mapaNormativo.map((norma) => (
+                                    <div key={norma.key} className={styles.applicableNormaGroup}>
+                                        <div className={styles.applicableNormaHeader}>
+                                            {norma.rango && <span className={styles.applicableNormaBadge}>{norma.rango}</span>}
+                                            <span className={styles.applicableNormaTitle}>{norma.titulo}</span>
+                                        </div>
+                                        <div className={styles.applicableArticleRows}>
+                                            {norma.articulosList.map((art) => (
+                                                <button
+                                                    key={art.key}
+                                                    type="button"
+                                                    className={styles.applicableArticleRow}
+                                                    onClick={() => onMapNodeSelect && onMapNodeSelect({ type: 'articulo', normaKey: norma.key, articuloId: art.key })}
+                                                >
+                                                    <span className={styles.applicableArticleLabel}>{art.titulo}</span>
+                                                    <span className={styles.applicableArticleMeta}>
+                                                        {art.totalFragments} fragmento{art.totalFragments === 1 ? '' : 's'}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    };
 
                     // --- Highlight search terms in text ---
                     const highlightString = (textStr: string, queryStr: string) => {
@@ -561,52 +606,120 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
 
                             <div className={styles.responseCard}>
                                 {!selectedMapNode ? (
-                                    <>
-                                        {isStructured ? (
-                                            <div className={styles.structuredBlocks}>
-                                                {criterioPractico && (
-                                                    <div className={styles.practicalBlock}>
-                                                        <div className={styles.practicalLabel}>Criterio práctico</div>
-                                                        <p className={styles.practicalText}>{criterioPractico}</p>
-                                                    </div>
-                                                )}
-                                                {shouldShowRespuestaBreve && (
-                                                    <div className={styles.responseBlock}>
-                                                        <div className={styles.blockLabel}>Respuesta breve</div>
-                                                        <p className={styles.blockText}>{respuestaBreve}</p>
-                                                    </div>
-                                                )}
-                                                {fundamentoNormativo && (
-                                                    <div className={styles.responseBlock}>
-                                                        <div className={styles.blockLabel}>Fundamento normativo</div>
-                                                        <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
-                                                    </div>
-                                                )}
-                                                {realSourceCitations.length > 0 && (
-                                                    <div className={`${styles.responseBlock} ${styles.citaBlock}`}>
-                                                        <div className={styles.blockLabel}>Fuentes citadas</div>
-                                                        <div className={styles.citaList}>
-                                                            {renderCitations(realSourceCitations)}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                    <div className={styles.normativeSheet}>
+                                        <div className={styles.sheetHeader}>
+                                            <div>
+                                                <div className={styles.sheetEyebrow}>Ficha de respuesta normativa</div>
+                                                <h2 className={styles.sheetTitle}>Resultado de consulta técnica</h2>
                                             </div>
-                                        ) : (
-                                            <>
-                                                {shouldShowUnstructuredCriterio && (
-                                                    <div className={styles.practicalBlock}>
-                                                        <div className={styles.practicalLabel}>Criterio práctico</div>
-                                                        <p className={styles.practicalText}>{criterioPractico}</p>
-                                                    </div>
-                                                )}
+                                            <div className={styles.sheetSourceCount}>
+                                                {sources.length} fuente{sources.length === 1 ? '' : 's'}
+                                            </div>
+                                        </div>
+
+                                        <section className={styles.sheetBlock}>
+                                            <div className={styles.sheetBlockHeader}>
+                                                <span className={styles.sheetBlockNumber}>1</span>
+                                                <h3>Conclusión rápida</h3>
+                                            </div>
+                                            <p className={styles.conclusionText}>{highlightString(conclusionRapida, query)}</p>
+                                            {isStructured && shouldShowRespuestaBreve && (
+                                                <p className={styles.secondaryConclusionText}>{respuestaBreve}</p>
+                                            )}
+                                        </section>
+
+                                        <section className={styles.sheetBlock}>
+                                            <div className={styles.sheetBlockHeader}>
+                                                <span className={styles.sheetBlockNumber}>2</span>
+                                                <h3>Artículos aplicables</h3>
+                                            </div>
+                                            {renderArticleGroups()}
+                                        </section>
+
+                                        <section className={styles.sheetBlock}>
+                                            <div className={styles.sheetBlockHeader}>
+                                                <span className={styles.sheetBlockNumber}>3</span>
+                                                <h3>Checklist técnico</h3>
+                                            </div>
+                                            {checklistItems.length > 0 ? (
+                                                <ul className={styles.checklistList}>
+                                                    {checklistItems.map((item, index) => (
+                                                        <li key={`${item}-${index}`}>{item}</li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <div className={styles.checklistPlaceholder}>
+                                                    Checklist disponible al generar informe técnico.
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        <section className={styles.sheetBlock}>
+                                            <div className={styles.sheetBlockHeader}>
+                                                <span className={styles.sheetBlockNumber}>4</span>
+                                                <h3>Fuentes normativas</h3>
+                                            </div>
+                                            {realSourceCitations.length > 0 ? (
+                                                <div className={styles.normativeSourcesList}>
+                                                    {renderCitations(realSourceCitations)}
+                                                </div>
+                                            ) : (
+                                                <div className={styles.emptyNormativeBlock}>
+                                                    No hay fuentes reales asociadas a esta respuesta.
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        {fundamentoNormativo && (
+                                            <section className={styles.sheetBlock}>
+                                                <div className={styles.sheetBlockHeader}>
+                                                    <span className={styles.sheetBlockNumber}>5</span>
+                                                    <h3>Fundamento normativo</h3>
+                                                </div>
+                                                <p className={styles.blockText}>{highlightString(fundamentoNormativo, query)}</p>
+                                            </section>
+                                        )}
+
+                                        {!isStructured && (
+                                            <section className={styles.sheetBlock}>
+                                                <div className={styles.sheetBlockHeader}>
+                                                    <span className={styles.sheetBlockNumber}>{fundamentoNormativo ? '6' : '5'}</span>
+                                                    <h3>Respuesta completa</h3>
+                                                </div>
                                                 <div className={styles.responseText}>
                                                     {text.split('\n\n').map((paragraph, i) => (
                                                         <p key={i}>{paragraph}</p>
                                                     ))}
                                                 </div>
-                                            </>
+                                            </section>
                                         )}
-                                    </>
+
+                                        <section className={`${styles.sheetBlock} ${styles.actionsBlock}`}>
+                                            <div className={styles.sheetBlockHeader}>
+                                                <span className={styles.sheetBlockNumber}>{fundamentoNormativo || !isStructured ? '6' : '5'}</span>
+                                                <h3>Acciones</h3>
+                                            </div>
+                                            <div className={styles.sheetActions}>
+                                                <button
+                                                    type="button"
+                                                    className={styles.technicalReportToggle}
+                                                    onClick={handleTechnicalReportToggle}
+                                                    disabled={isGeneratingTechnicalReport}
+                                                >
+                                                    <FileText size={16} />
+                                                    {showTechnicalReport ? 'Ocultar informe técnico' : 'Informe técnico'}
+                                                </button>
+                                                <button type="button" className={styles.futureActionButton} disabled title="Próximamente">
+                                                    <Save size={16} />
+                                                    Guardar
+                                                </button>
+                                                <button type="button" className={styles.futureActionButton} disabled title="Próximamente">
+                                                    <Download size={16} />
+                                                    Exportar
+                                                </button>
+                                            </div>
+                                        </section>
+                                    </div>
                                 ) : (
                                     <div className={styles.filteredRAGView}>
                                         <button 
@@ -653,16 +766,6 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                             </div>
                             {!selectedMapNode && (
                                 <>
-                                    <button
-                                        type="button"
-                                        className={styles.technicalReportToggle}
-                                        onClick={handleTechnicalReportToggle}
-                                        disabled={isGeneratingTechnicalReport}
-                                    >
-                                        <FileText size={16} />
-                                        {showTechnicalReport ? 'Ocultar informe técnico' : 'Generar informe técnico'}
-                                    </button>
-
                                     {showTechnicalReport && (
                                         <article className={styles.technicalReportCard}>
                                             <header className={styles.technicalReportHeader}>

@@ -853,6 +853,230 @@
     color: var(--text-primary);
 }
 
+.normativeSheet {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.sheetHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    border-bottom: 2px solid #E2E8F0;
+    padding-bottom: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.sheetEyebrow {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #475569;
+    margin-bottom: 0.35rem;
+}
+
+.sheetTitle {
+    font-size: 1.45rem;
+    line-height: 1.25;
+    color: #0F172A;
+    margin: 0;
+}
+
+.sheetSourceCount {
+    flex-shrink: 0;
+    border: 1px solid #CBD5E1;
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+    background: #F8FAFC;
+}
+
+.sheetBlock {
+    border: 1px solid #D7DEE8;
+    border-radius: 8px;
+    background: #FFFFFF;
+    padding: 1.25rem 1.4rem;
+}
+
+.sheetBlockHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.9rem;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.sheetBlockHeader h3 {
+    font-size: 0.88rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #1E293B;
+    margin: 0;
+}
+
+.sheetBlockNumber {
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #0F172A;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.conclusionText {
+    font-size: 1.18rem;
+    line-height: 1.75;
+    color: #0F172A;
+    font-weight: 600;
+    margin: 0;
+}
+
+.secondaryConclusionText {
+    margin: 0.85rem 0 0;
+    padding-top: 0.85rem;
+    border-top: 1px solid #E5E7EB;
+    color: #334155;
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.applicableArticlesList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.applicableNormaGroup {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 0.95rem;
+}
+
+.applicableNormaHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.7rem;
+}
+
+.applicableNormaBadge {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #475569;
+    background: white;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 0.18rem 0.45rem;
+}
+
+.applicableNormaTitle {
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.applicableArticleRows {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.applicableArticleRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.8rem;
+    width: 100%;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 0.65rem 0.75rem;
+    color: #1E293B;
+    cursor: pointer;
+    text-align: left;
+}
+
+.applicableArticleRow:hover {
+    border-color: #CBD5E1;
+    background: #F8FAFC;
+}
+
+.applicableArticleLabel {
+    font-size: 0.92rem;
+    font-weight: 650;
+}
+
+.applicableArticleMeta {
+    flex-shrink: 0;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #64748B;
+}
+
+.checklistList {
+    margin: 0;
+    padding-left: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: #1F2937;
+    font-size: 0.98rem;
+    line-height: 1.65;
+}
+
+.checklistPlaceholder,
+.emptyNormativeBlock {
+    background: #F8FAFC;
+    border: 1px dashed #CBD5E1;
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    color: #64748B;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+.normativeSourcesList {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.actionsBlock {
+    background: #F8FAFC;
+}
+
+.sheetActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.futureActionButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: white;
+    color: #64748B;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 0.7rem 1rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+
 .technicalReportToggle {
     align-self: flex-start;
     display: inline-flex;
