@@ -1026,14 +1026,28 @@
 }
 
 .checklistList {
+    list-style: none;
     margin: 0;
-    padding-left: 1.2rem;
+    padding-left: 0;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     color: #1F2937;
     font-size: 0.98rem;
     line-height: 1.65;
+}
+
+.checklistList li {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+}
+
+.checklistList li::before {
+    content: "☐";
+    flex-shrink: 0;
+    color: #475569;
+    font-weight: 800;
 }
 
 .checklistPlaceholder,

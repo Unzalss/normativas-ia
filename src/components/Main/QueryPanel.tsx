@@ -468,12 +468,54 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                     const criterioPractico   = collapseRepeatedText(criterioPracticoRaw);
                     const shouldShowRespuestaBreve = respuestaBreve && collapseRepeatedText(respuestaBreve) !== criterioPractico;
                     const conclusionRapida = criterioPractico || respuestaBreve || text.split('\n\n').find((paragraph) => paragraph.trim())?.trim() || '';
+
+                    const deriveChecklistItems = () => {
+                        const corpus = [
+                            text,
+                            ...sources.slice(0, 8).flatMap((source) => [
+                                source.title,
+                                source.subtitle,
+                                source.source_label,
+                                source.articulo_detectado,
+                                source.content,
+                                source.highlight,
+                            ]),
+                        ].join('\n').toLowerCase();
+
+                        const items: string[] = [];
+                        const addIf = (condition: boolean, label: string) => {
+                            if (condition && !items.includes(label)) items.push(label);
+                        };
+
+                        addIf(
+                            corpus.includes('plan de prevención') || corpus.includes('integrando la prevención') || corpus.includes('integrar la prevención'),
+                            'Verificar existencia de plan de prevención.'
+                        );
+                        addIf(
+                            corpus.includes('evaluación de riesgos') || corpus.includes('evaluacion de riesgos') || corpus.includes('evaluar los riesgos'),
+                            'Verificar evaluación de riesgos.'
+                        );
+                        addIf(
+                            corpus.includes('formación') || corpus.includes('formacion') || corpus.includes('información') || corpus.includes('informacion') || corpus.includes('instrucciones adecuadas'),
+                            'Verificar formación/información a trabajadores.'
+                        );
+                        addIf(
+                            corpus.includes('organización preventiva') || corpus.includes('organizacion preventiva') || corpus.includes('recursos preventivos') || corpus.includes('servicio de prevención') || corpus.includes('servicio de prevencion'),
+                            'Verificar organización preventiva o recursos preventivos.'
+                        );
+                        addIf(
+                            corpus.includes('principios de la acción preventiva') || corpus.includes('principios de la accion preventiva') || corpus.includes('artículo 15') || corpus.includes('articulo 15'),
+                            'Revisar aplicación de principios de acción preventiva.'
+                        );
+
+                        return items;
+                    };
                     const checklistItems = checklistText
                         ? checklistText
                             .split(/\n+/)
                             .map((item) => item.replace(/^\s*(?:[-*•]|\d+[\.)])\s*/, '').trim())
                             .filter(Boolean)
-                        : [];
+                        : deriveChecklistItems();
 
 
 
@@ -649,7 +691,7 @@ export default function QueryPanel({ query, response, isLoading, error, onQuery,
                                                 </ul>
                                             ) : (
                                                 <div className={styles.checklistPlaceholder}>
-                                                    Checklist disponible al generar informe técnico.
+                                                    No se han detectado puntos de comprobación suficientes.
                                                 </div>
                                             )}
                                         </section>
